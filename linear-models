@@ -1,0 +1,108 @@
+
+
+### But why linear models?
+
+For a true model $E[y] = f(x)$, the first order Taylor expansion around $x_0$ is
+
+$$f(x) \approx f(x_0) + f'(x_0) (x - x_0)$$
+
+Which we can see gives intercept $\beta_0 = f(x_0)$ and a slope $\beta_1 = f'(x_0)$ terms.
+
+### A look at omitted confounders
+
+Suppose the true model is:
+
+$$y = \beta_0 + \beta_1 x + \beta_2 z + \epsilon$$
+
+but we fit the model that omits $z$:
+
+$$y = \widehat{\beta}_0 + \widehat{\beta}_1 x$$
+
+Then the estimates aren't necessarily unbiased for their target parameters.  
+
+For example, if:
+
+$$z = a + bx + \delta$$
+
+then the true model can be rewritten:
+
+$$\begin{align}
+y &= \beta_0 + \beta_1 x + \beta_2(a + bx + \delta) + \epsilon \\
+&= (\beta_0 + \beta_2 a) + (\beta_1 + \beta_2 b) x + (\epsilon + \beta_2 \delta)
+\end{align}$$
+
+so our estimates are actually unbiased for:
+
+$$E[\widehat{\beta}_0] = \beta_0 + \beta_2 a$$
+
+$$E[\widehat{\beta}_1] = \beta_1 + \beta_2 b$$
+
+## Mixed effects models
+
+Suppose our $y_i$'s are vectors of length $m_i$.  Then a mixed effects model looks like:
+
+$$y_i = x_i \beta + z_i \gamma_i + \epsilon_i$$
+
+where 
+
+- $y_i$ and $\epsilon_i$ are $m_i \times 1$ vectors
+- $x_i$ are $m_i \times p$ matrices
+- $z_i$ are $m_i \times q$ subsets of columns of $x_i$
+- $\beta$ is a $p \times 1$ vector of fixed effects parameters
+- $\gamma_i$ are $q \times 1$ vectors of random effects
+
+In matrix form, they look like:
+
+$$\begin{pmatrix} y_{i1} \\ \vdots \\ y_{im_i} \end{pmatrix} = \begin{pmatrix} 1 & x_{i11} & \dots & x_{i1p} \\ \vdots & \vdots & \ddots & \vdots \\ 1 & x_{im_i1} & \dots & x_{im_ip} \end{pmatrix} \begin{pmatrix}\beta_0 \\ \vdots \\ \beta_p\end{pmatrix} + \begin{pmatrix} 1 & z_{i1} & \dots & z_{i1q} \\ \vdots & \vdots & \ddots & \vdots \\ 1 & z_{im_i1} & \dots & z_{im_iq} \end{pmatrix} \begin{pmatrix}\gamma_{i0} \\ \vdots \\ \gamma_{iq}\end{pmatrix} + \begin{pmatrix} \epsilon_{i1} \\ \vdots \\ \epsilon_{im_i} \end{pmatrix}$$
+
+We make additional assumptions:
+
+- $\gamma_i$ have mean $0$ and variance-covariance matrix $D$ which is $q \times q$
+- $\epsilon_i$ have mean $0$ and variance-covariance matrix $E_i$ which is $m_i \times m_i$
+- $\gamma_i$ and $\epsilon_i$ are independent
+
+And naturally, we have the usual assumptions of independence between observations $i$ and $i'$.
+
+The model specification above is *conditional* on the random effects.  This induces a marginal model:
+
+$$E[y_i] = x_i \beta$$
+
+$$Cov[y_i] = z_i Cov[\gamma_i] z_i^T + Cov[\epsilon_i] = z_i D z_i^T + E_i$$
+
+### Random intercepts model
+
+In a traditional intercepts-only model $y_i = \beta_0 + \epsilon_i$, we observe one observation per subject and assume values are noisy around some flat baseline.  We estimate $\widehat{\beta}_0 = \bar{y}$.
+
+In a random intercepts model $y_i = \beta_0 + \gamma_{i0} + \epsilon_i$, we observe multiple observations per subject and assume values are noisy around some subject-specific baseline $\beta_0 + \gamma_{i0}$.  Then:
+
+- $x_i = z_i = [1, \dots, 1]^T$
+- $\beta$ is a scalar value $\beta_0$
+- $\gamma_{i0}$ is a scalar value with mean $0$ and variance $\sigma^2_{\gamma}$
+- $\epsilon_i$ has variance-covariance matrix $E_i = \sigma^2_{\epsilon} I_{m_i}$ meaning within-subject observations are independent
+
+Then the marginal variance-covariance matrix is:
+
+$$Cov[y_i] = \begin{pmatrix}\sigma^2_{\gamma} + \sigma^2_{\epsilon}  & \dots & \sigma^2_{\gamma}  \\ \vdots & \ddots & \vdots \\ \sigma^2_{\gamma}  & \dots & \sigma^2_{\gamma} + \sigma^2_{\epsilon} \end{pmatrix} = \sigma^2 \begin{pmatrix}1  & \dots & \rho  \\ \vdots & \ddots & \vdots \\ \rho  & \dots  & 1 \end{pmatrix}$$
+
+where $\sigma^2 = \sigma^2_{\gamma} + \sigma^2_{\epsilon}$ and $\rho = \sigma^2_{\gamma} / \sigma^2$.
+
+In other words, assuming subject-specific baselines drawn from some common distribution causes the observations belonging to the same subject to be marginally correlated.
+
+### Random intercepts and random slopes model
+
+Now let's assume our repeated measurements are over time $t$.  Then we might use the model 
+
+$$y_i = (\beta_0 + \gamma_{i0}) + (\beta_1 + \gamma_{i1}) t_i + \epsilon_i$$
+
+where
+
+- $x_i = z_i = \begin{pmatrix} 1 & t_{i1} \\ \vdots & \vdots \\ 1 & t_{im_i} \end{pmatrix}$
+- $\gamma_i$ has variance-covariance matrix $D = \begin{pmatrix}\sigma^2_{\gamma0} & \sigma_{\gamma01} \\ \sigma_{\gamma10} & \sigma^2_{\gamma1} \end{pmatrix}$
+
+Note that we're still assuming $E_i$ to be diagonal since we're assuming the within-subject errors are independent *conditional* on the time for which we're already controlling in the model.
+
+## Estimation
+
+1. Iterate between estimating $\widehat{\beta}$ and $\widehat{\alpha}$ from $l(\beta, \alpha)$ while holding the other fixed.  
+3. Should be able to iterate between these two steps.
+4. 
