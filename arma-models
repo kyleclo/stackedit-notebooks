@@ -1,0 +1,285 @@
+
+
+- [Time Series Analysis by Wei](http://ruangbacafmipa.staff.ub.ac.id/files/2012/02/Time-Series-Analysis-by.-Wei.pdf)
+- [Introduction to Time Series and Forecasting by Brockwell and Davis](https://gejza.nipax.cz/_media/stochasticke_procesy:2002-brockwell-introduction_time_series_and_forecasting.pdf)
+
+# Stationarity
+
+#### Definition
+
+A process is **stationary** if its distribution doesn't change with time.  Specifically:
+
+- $n^{th}$ order stationarity is when $(y_{t_1},\dots,y_{t_n}) \overset{d}= (y_{t_1+k},\dots,y_{t_n+k})$ for any $n$-tuple and integer $k$.
+
+- If the property holds for any value of $n$, then the process is **strongly stationary**.
+
+- A process is $n^{th}$ order **weakly stationary** if the $1^{st}$ to $n^{th}$ moments are jointly time-invariant.
+
+Note that strong and weak stationarity don't necessarily imply the other:
+
+- e.g. A Cauchy iid process is strongly but not weakly stationary because the moments aren't finite.
+
+- e.g. An alternating sequence of $N(0,1)$ and $Uniform(\{-1, 1\})$ is weakly but not strongly stationary.  
+
+#### Parameters
+
+If a $2^{nd}$ order weakly stationary process has finite first and second moments, then:
+
+- The mean and variance are time-invariant.  We denote these $\mu_t = \mu$ and $\sigma^2_t = \sigma^2$.
+
+- The autocovariance (ACVF) and autocorrelation (ACF) functions only depend on the lag $k$ between two time points.  We denote these $\gamma(t_1,t_2) = \gamma_k$ and $\rho(t_1,t_2) = \rho_k$.
+
+This is also called **covariance stationarity**.  Assuming this form of weak stationarity will be sufficient for most models since we typically assume Gaussianity (uniquely identified by first and second moments).
+
+# Partial autocorrelation
+
+The PACF is
+
+$$\frac{Cov[y_t, y_{t+k} \vert y_{t+1}, \dots, y_{t+k-1}]}{\sqrt{Var[y_t \vert y_{t+1}, \dots, y_{t+k-1}]} \sqrt{Var[y_{t+k} \vert y_{t+1}, \dots, y_{t+k-1}]}}$$
+
+which is similar to the ACF $\rho_k$ but conditional on all values between $t$ and $t+k$. 
+
+The idea of conditioning on these values is expressed by the **residuals** from the linear regressions
+
+$$\widehat{y}_{t} = \alpha_0 + \alpha_1 y_{t+1} + \dots + \alpha_{k-1} y_{t+k-1}$$
+
+$$\widehat{y}_{t+k} = \beta_0 + \beta_1 y_{t+1} + \dots + \beta_{k-1} y_{t+k-1}$$
+
+in that the PACF can be written like the ACF of the residuals:
+
+$$\frac{Cov[(y_t - \widehat{y}_t)(y_{t+k} - \widehat{y}_{t+k})]}{\sqrt{Var[y_t - \widehat{y}_t]} \sqrt{Var[y_{t+k} - \widehat{y}_{t+k}]}}$$
+
+There is a closed form expression for this, but unnecessary for now.  See Section 2.3 of Wei if curious.
+
+# MA(q) process
+
+The MA(q) process is defined:
+
+$$y_t = \mu + \epsilon_t + \psi_1 \epsilon_{t-1} + \dots + \psi_q \epsilon_{t-q}$$
+
+where $\epsilon_t$ is iid with mean $0$ and variance $\sigma_{\epsilon}^2$.
+
+Compactly,
+
+$$y_t - \mu = \psi(B) \epsilon_t$$
+
+where $\psi(B) = (1 + \psi_1 B + \psi_2 B^2 + \dots + \psi_q B^q)$.
+
+#### Application
+
+Useful for modeling phenomena in which events produce an immediate-but-short-lasting effect.
+
+#### Assumptions
+
+The finite-order **MA(q) process is always stationary**.  
+
+More generally, for an infinite-order MA process to be stationary, we require that $\sum_{j=1}^{\infty} \psi_j^2 \lt \infty$ to ensure finite variance (see next section). 
+
+#### Properties
+
+- Mean 
+$$\begin{align}
+E[y_t] &= \mu + \psi_1 E[\epsilon_{t-1}] + \dots + \psi_q E[\epsilon_{t-q}]  \\
+&= \mu
+\end{align}$$
+
+- Variance (where $\psi_0 = 1$):
+$$\begin{align}
+Var[y_t] &= Var[\epsilon_t] + \psi_1^2 Var[\epsilon_{t-1}] + \dots + \psi_q^2 Var[\epsilon_{t-q}]  \\
+&= \sigma_{\epsilon}^2 + \sigma_{\epsilon}^2 \sum_{j=1}^q \psi_j^2 \\
+&= \sigma^2_{\epsilon} \sum_{j=0}^q \psi_j^2
+\end{align}$$
+
+- Autocovariance disappears for lag $k \gt q$:
+
+$$\begin{align}
+\gamma_k &= E[(y_t - \mu)(y_{t+k} - \mu)] \\
+&= E\left[ \left( \sum_{i=0}^q \psi_i \epsilon_{t-i} \right) \left( \sum_{j=0}^q \psi_j \epsilon_{t+k-j} \right) \right] \\
+&= E\left[ \sum_{i=0}^q \sum_{j=0}^q \psi_i \psi_j \epsilon_{t-i} \epsilon_{t+k-j} \right] \\
+&= \begin{cases}
+\sigma^2_{\epsilon} \sum_{j=0}^q \psi_j \psi_{j+k} & k \le q\\
+0 & k \gt q
+\end{cases} \\
+&= \begin{cases}
+ \sigma^2_{\epsilon} \psi_k + \sigma^2_{\epsilon}  \sum_{j=1}^q \psi_j \psi_{j+k} & k \le q\\
+0 & k \gt q
+\end{cases} 
+\end{align}$$
+
+- PACF exhibits an exponential decay or damped sine wave as $k \to \infty$, depending on the sign of the $\psi$ terms
+
+
+# AR(p) process
+
+The AR(p) process is defined:
+
+$$y_t = \mu + \phi_1 (y_{t-1} - \mu) + \dots + \phi_p (y_{t-p} - \mu) + \epsilon_t$$
+
+where $\epsilon_t$ is iid with mean $0$ and variance $\sigma^2$.
+
+Compactly,
+
+$$\phi(B)(y_t - \mu) = \epsilon_t$$
+
+where $\phi(B) = (1 - \phi_1 B - \phi_2 B^2 - \dots - \phi_p B^p)$.
+
+#### Properties
+
+Assuming stationarity:
+
+- Mean 
+$$\begin{align}
+E[y_t] &= \mu + \phi_1 (E[y_{t-1}] - \mu) + \dots + \phi_p (E[y_{t-p}] - \mu)  \\
+&= \mu + (E[y_t] - \mu) \sum_{j=1}^p \phi_j \\
+&= \frac{\mu - \mu \sum_{j=1}^p \phi_j }{1 - \sum_{j=1}^p \phi_j } \\
+&= \mu
+\end{align}$$
+
+- Variance:
+$$\begin{align}
+Var[y_t] &= \phi_1^2 Var[y_{t-1}] + \dots + \phi_p^2 Var[y_{t-p}]  + \sigma^2_{\epsilon} \\
+&=  \sigma^2_{\epsilon} + Var[y_t] \sum_{j=1}^p \phi_j^2 \\
+&= \frac{\sigma_{\epsilon}^2}{1 - \sum_{j=1}^p \phi_j^2 } 
+\end{align}$$
+
+- Autocovariance (without loss of generality, assume $\mu = 0$) exhibits an exponential decay or damped sine wave as $k \to \infty$, depending on the sign of the $\phi$ terms:
+
+$$\begin{align} \\
+y_t y_{t-k} &= (\phi_1 y_{t-1} + \dots + \phi_p y_{t-p} + \epsilon_t) y_{t-k}\\
+\gamma_k = E[y_t y_{t-k}] &= E[\phi_1 y_{t-1}y_{t-k} + \dots + \phi_p y_{t-p}y_{t-k} + \epsilon_t y_{t-k} ]\\
+&= \phi_1 \gamma_{k-1} + \dots + \phi_p \gamma_{k-p} \\
+&= \sum_{j=1}^p \phi_j \gamma_{k-j}
+\end{align}$$
+
+- PACF disappears for lag $k \gt p$.
+
+
+# Invertability
+
+A process is **invertible** if it can be written in an AR form.   In fact, the finite-order **AR(p) process is always invertible**.  
+
+More generally, for an infinite-order AR process to be invertible, we require that $\sum_{j=1}^{\infty} \vert \phi_j \vert \lt \infty$.  
+
+Box & Jenkins argued that only invertible processes are worth forecasting.  
+
+Note that invertibility is not the same as stationarity:
+
+- A stationarity MA process is invertible if the roots of the equation $\psi(B) = 0$ have absolute value $\gt 1$.
+
+- An invertible AR process is stationary if the roots of the equation $\phi(B) = 0$ have absolute value $\gt 1$.
+
+
+# ARMA
+
+The ARMA(p,q) process is defined:
+
+$$y_t = \mu + \phi_1 (y_{t-1} - \mu) + \dots + \phi_p (y_{t-1} - \mu) + \epsilon_t + \psi_1 \epsilon_{t-1} + \dots + \psi_q \epsilon_{t-q}$$
+
+or compactly,
+
+$$\phi(B)(y_t - \mu) = \psi(B) \epsilon_t$$
+
+#### Method of moments estimation
+
+For example, let's consider the stationary AR(2) process:
+
+$$y_t = \mu + \phi_1 (y_{t-1} - \mu) + \phi_2 (y_{t-2} - \mu) +  \epsilon_t$$
+
+First, we estimate the mean with its sample estimator $\mu \approx \bar{y}$.
+
+Next, we estimate $\phi_1$ and $\phi_2$ using the ACF at $k = 1,2$:
+
+$$
+\begin{align}
+\rho_1 &= \frac{\gamma_1}{\gamma_0} = \frac{\phi_1 \gamma_0 + \phi_2 \gamma_1}{\gamma_0} = \phi_1 + \phi_2 \rho_1 \\
+\rho_2 &= \frac{\gamma_2}{\gamma_0} = \frac{\phi_1 \gamma_1 + \phi_2 \gamma_0}{\gamma_0} = \phi_1 \rho_1 + \phi_2   
+\end{align}
+$$
+
+If we estimate $\rho_k \approx \widehat{\rho}_k$, then we're left with two equations and two unknowns.  Solving the system of linear equations:
+
+$$
+\begin{pmatrix} \widehat{\rho}_1 \\ \widehat{\rho}_2 \end{pmatrix} = \begin{pmatrix} 1 & \widehat{\rho}_1 \\
+\widehat{\rho}_1 & 1 \end{pmatrix} \begin{pmatrix}
+\phi_1 \\
+\phi_2
+\end{pmatrix}
+$$
+
+will get us the estimators for $\phi_1$ and $\phi_2$.
+
+This procedure is also called Yule-Walker estimation.  It's not recommended because it gets very complex for MA or ARMA processes.
+
+#### Maximum likelihood estimation
+
+For example, let's consider the stationary AR(1) process where $\mu = 0$.  Furthermore, we're now assuming $\epsilon_t$ are Gaussian:
+
+$$y_t = \phi y_{t-1} + \epsilon_t$$
+
+Then the likelihood can be factorized:
+
+$$\begin{align}
+f(y_1,\dots,y_n) &= f(y_1) f(y_2 \vert y_1) \cdots f(y_n \vert y_{n-1}, \dots, y_1) \\
+&= f(y_1) f(y_2 \vert y_1) \cdots f(y_n \vert y_{n-1}) 
+\end{align}$$
+
+The components are derived:
+$$
+\begin{align}
+f(y_1) &= N\left(0, \frac{\sigma^2_{\epsilon}}{1 - \phi^2}\right) \\
+\log f(y_1) &= - \frac{1}{2} \log 2\pi \sigma_{\epsilon}^2 + \frac{1}{2} \log (1 - \phi^2)  - \frac{(1-\phi^2) y_1^2}{2\sigma^2_{\epsilon}} 
+\end{align}
+$$
+
+and
+
+$$
+\begin{align}
+f(y_t \vert y_{t-1}) &= N\left(\phi y_{t-1}, \sigma^2_{\epsilon} \right) \\
+\log f(y_t \vert y_{t-1}) &= - \frac{1}{2} \log 2\pi \sigma_{\epsilon}^2 - \frac{(y_t - \phi y_{t-1})^2}{2\sigma^2_{\epsilon}} 
+\end{align}
+$$
+
+Therefore, the log-likelihood is
+
+$$\begin{align}
+l(\phi, \sigma^2_{\epsilon}) &= \log f(y_1) + \sum_{t=2}^n \log f(y_t \vert y_{t-1}) \\
+&= -\frac{n}{2}\log 2\pi\sigma^2_{\epsilon} + \frac{1}{2} \log (1 - \phi^2) - \frac{y_1^2(1-\phi^2) + \sum_{t=2}^n (y_t - \phi y_{t-1})^2}{2\sigma^2_{\epsilon}}
+\end{align}$$
+
+Differentiating gives us:
+
+$$\begin{align}
+\frac{\partial l}{\partial \sigma^2_{\epsilon}} &= -\frac{n}{2\sigma^2_{\epsilon}}  + \frac{y_1^2(1-\phi^2) + \sum_{t=2}^n (y_t - \phi y_{t-1})^2}{2\sigma^4_{\epsilon}} := 0
+\end{align}$$
+
+and
+
+$$\begin{align}
+\frac{\partial l}{\partial \phi} &=  \frac{y_1^2 \phi + \sum_{t=2}^n (y_t - \phi y_{t-1}) y_{t-1}}{\sigma^2_{\epsilon}} - \frac{\phi}{1 - \phi^2} := 0
+\end{align}$$
+
+Solving for zero gives us:
+
+$$\begin{align}
+\widehat{\sigma}^2_{\epsilon} &= \frac{y_1^2(1-\phi^2) + \sum_{t=2}^n (y_t - \phi y_{t-1})^2}{n}
+\end{align}$$
+
+and
+
+$$\begin{align}
+\widehat{\phi} \underbrace{\left( \frac{\widehat{\sigma}^2_{\epsilon} }{1 - \widehat{\phi}^2} - y_1^2 \right)}_{\delta} &= \sum_{t=2}^n (y_t - \widehat{\phi} y_{t-1}) y_{t-1}
+\end{align}$$
+
+Note that since the expected value of the $\delta$ term is approximately $0$, the LHS is near 0.  Then the RHS looks like the normal equation for simple linear regression of $y_t$ on $y_{t-1}$.  Hence, the MLE for $\phi$ should be similar to the least squares estimate for $\phi$.
+
+There exist exact closed form MLEs for ARMA(p,q) models, but they're too complicated to derive here.
+
+#### Least squares estimation
+
+An AR(p) model is linear in the parameters, so fits within the standard least squares regression framework.
+
+But models with MA terms aren't linear in the parameters.  For example, an ARMA(1,1):
+
+$$y_t = \mu + \phi(y_{t-1} - \mu) + \epsilon_t + \psi \epsilon_{t-1}$$
+
