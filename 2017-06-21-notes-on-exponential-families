@@ -1,0 +1,95 @@
+
+
+
+An exponential family distribution has the form:
+
+$$f(x) = h(x) e^{\eta(\theta) T(x) - A(\theta)}$$
+
+$\eta(\theta)$ is a vector of natural parameters and $T(x)$ is a vector of sufficient statistics.  Notice that the product of $\eta$ and $T$ is the only part where the data "mixes" with the parameters.
+
+$A(\theta)$ is a normalization term that ensures $f(x)$ integrates to $1$.   
+
+$$\begin{align}
+\int f(x) dx &= e^{-A(\theta)} \int h(x) e^{\eta(\theta) T(x)} dx = 1\\
+\implies e^{A(\theta)} &= \int h(x) e^{\eta(\theta) T(x)} dx \\
+\implies A(\theta) &= \log \int h(x) e^{\eta(\theta) T(x)} dx 
+\end{align}$$
+
+### Binomial
+
+$$\begin{align}
+f(x) &= {n \choose x} p^x (1-p)^{n-x} \\
+&= {n \choose x} p^x (1-p)^n (1-p)^{-x} \\
+&= {n \choose x} \left(\frac{p}{1-p}\right)^x (1-p)^n \\
+&= {n \choose x} \exp \left(x \log \frac{p}{1-p} + n \log (1-p)\right) \\
+\end{align}$$
+
+In other words, the natural parameter of the binomial distribution is the logit $\log \frac{p}{1-p}$.  This is actually pretty cool since the logistic regression model is then $\eta(p) = \beta^T x$.  Also note that $n$ doesn't appear in $\eta(p)$ or $T(x)$.
+
+### Multinomial
+
+$$\begin{align}
+f(x) &= \frac{n!}{x_1! \dots x_k!} p_1^{x_1} \dots p_k^{x_k} \\
+&= \frac{n!}{x_1! \dots x_k!} \exp \left( x_1 \log p_1 + \cdots + x_k \log p_k\right)\\
+\end{align}$$
+
+
+
+### Univariate Gaussian
+
+#### Using Variance
+
+$$\begin{align}
+f(x) &= \frac{1}{\sqrt{2\pi\sigma^2}} \exp \left( -\frac{1}{2\sigma^2}(x - \mu)^2 \right) \\
+&= \frac{1}{\sqrt{2\pi\sigma^2}} \exp \left( -\frac{1}{2\sigma^2}(x - \mu)^2 - \frac{1}{2} \log \sigma^2 \right) \\
+&= \frac{1}{\sqrt{2\pi\sigma^2}} \exp \left( \underbrace{ \frac{x\mu}{\sigma^2} -\frac{x^2}{2\sigma^2}}_{\eta(\mu, \sigma^2) T(x)} - \underbrace{ \frac{\mu^2}{2\sigma^2} - \frac{1}{2} \log \sigma^2}_{A(\mu, \sigma^2)} \right) \\
+\end{align}$$
+
+Let's look at the gradient and Hessian of the log-likelihood:
+
+$$l(\mu, \sigma^2) \propto -\frac{1}{2} \log \sigma^2 - \frac{1}{2 \sigma^2} (x-\mu)^2$$
+
+$$\nabla \log f(x) = \left[\frac{x-\mu}{\sigma^2}, \frac{(x-\mu)^2}{2 \sigma^4} - \frac{1}{2\sigma^2} \right]^T$$
+
+$$H_{\mu, \sigma^2} f(x) = \begin{pmatrix} -\frac{1}{\sigma^2} &  -\frac{x-\mu}{\sigma^4} \\ -\frac{x-\mu}{\sigma^4} & \frac{1}{2\sigma^4} - \frac{(x-\mu)^2}{\sigma^6} \end{pmatrix}$$
+
+which is not negative definite for all values of $\mu$ and $\sigma$.
+
+If $\sigma^2$ is sufficiently large relative to $\vert x - \mu \vert$, the gradient becomes flat for $\mu$ and points towards lower values for $\sigma^2$.  Hence, a maximum likelihood procedure would see gradual shrinking of $\sigma^2$ estimate without movement in $\mu$.   After a certain point, $\sigma^2$ would be sufficiently small such that the gradient for $\mu$ would be nonzero and $\mu$ estimate would begin adjusting slightly.
+
+But if $\sigma^2$ is *too* small, then the gradient explodes.  For $\mu$, the gradient points toward the location of the data $x$.  For $\sigma^2$,  and actually points toward even lower values for $\sigma^2$.  Hence, a poorly-initialized maximum likelihood procedure would fail to converge. 
+
+#### Using Precision
+
+$$\begin{align}
+f(x) &= \sqrt{\frac{\tau}{2\pi}} \exp \left( -\frac{\tau}{2}(x - \mu)^2 \right) \\
+&= \frac{1}{\sqrt{2\pi}} \exp \left( -\frac{\tau}{2}(x - \mu)^2 + \frac{1}{2} \log \tau \right) \\
+&= \frac{1}{\sqrt{2\pi}} \exp \left( \underbrace{ \tau \mu x  -\frac{\tau x^2}{2}}_{\eta(\mu, \tau)T(x)} - \underbrace{ \frac{\tau \mu^2}{2} + \frac{1}{2} \log \tau }_{A(\mu, \tau)} \right) \\
+\end{align}$$
+
+The nice thing about parameterization using precision instead of variance is the gradient and Hessian of the log-likelihood look very nice:
+
+$$\nabla \log f(x) = \left[\tau(x-\mu), \frac{1}{2\tau} - \frac{(x-\mu)^2}{2} \right]^T$$
+
+$$H_{\mu, \tau} f(x) = \begin{pmatrix} -\tau & x - \mu \\ x - \mu & \frac{1}{2} \end{pmatrix}$$
+
+Note that the determinant is always negative:
+
+$$\det H_{\mu,\tau} f(x) = \underbrace{-\frac{\tau}{2}}_{<0} - \underbrace{(x-\mu)^2}_{\ge 0}$$
+
+But that doesn't mean the Hessian is negative definite.  Checking the eigenvalues:
+
+$$\begin{align}
+\det \begin{pmatrix} -\tau - \lambda & x-\mu \\ x-\mu & \frac{1}{2} - \lambda \end{pmatrix} &= \lambda^2 + \left(\tau - \frac{1}{2}\right) \lambda - \left( \frac{\tau}{2} + (x-\mu)^2 \right) := 0\\
+\lambda &=  \pm \frac{\sqrt{}}{2} - \frac{\tau}{2} + 1
+\end{align}$$
+
+where $\alpha = $ is some positive term that depends on $\mu$, $\tau$, and $x$.  
+
+### Multivariate Gaussian
+
+$$\begin{align}
+f(x) &= (2\pi)^{-n/2} \vert \Sigma \vert^{-1/2} \exp \left( -\frac{1}{2}(x - \mu)^T \Sigma^{-1} (x - \mu) \right) \\
+&= (2\pi)^{-n/2} \exp \left( -\frac{1}{2}(x - \mu)^T \Sigma^{-1} (x - \mu) - \frac{1}{2}\log \vert \Sigma \vert \right) \\
+&= (2\pi)^{-n/2} \exp \left( \underbrace{x^T \Sigma^{-1} \mu -\frac{1}{2} x^T \Sigma^{-1} x }_{\eta(\mu, \Sigma) T(x) } - \underbrace{\frac{1}{2} \mu^T \Sigma^{-1} \mu -\frac{1}{2} \log \vert \Sigma \vert}_{A(\mu, \Sigma)} \right) \\
+\end{align}$$
