@@ -1,0 +1,179 @@
+
+---
+layout: post
+title: 'Playing Snake with deep reinforcement learning in Python and Tensorflow'
+authors: 'Solstat group'
+---
+
+This blog post documents our experience learning how to develop an AI that plays Snake with deep reinforcement learning.
+
+We used Tensorflow as our deep learning toolbox.  For those new to Tensorflow, we recommend first completing their [tutorial](https://www.tensorflow.org/tutorials/mnist/beginners/) for fitting a softmax regression model.
+
+## The snake game
+
+### Description
+
+For those unfamiliar with the Snake game, running:
+```bash
+python /snake/play_ascii_snake.py 10 10
+```
+will load up an example of the game for a 10 x 10 board. Use the W-A-S-D keys to move North-West-South-East (in that order).
+
+![example](ascii-snake.gif)
+
+In short, you play as a **snake** (represented by `O`) and move along the board to eat **pellets** (represented by `*`).  
+
+- **The snake always moves in the direction it faces (at a constant rate) until a command is given forcing it to turn.**  For example, the game begins with the snake moving North.  Then the `A` or `D` commands would cause the snake to move West or East, while the `W` command would be ignored since the snake is already moving North.  **The snake cannot make 180-degree turns,** meaning the `S` command to move South would also be ignored.
+
+- **The snake consumes the pellet when it collides with it.  When this happens, the snake grows in length by 1 and the Score is increased by 1.**  Specifically, when the snake grows, an additional `O` character replaces the pellet; as the snake moves away from that coordinate, the `O` is appended to the end of the snake body.
+
+- **After consuming a pellet, a new one randomly spawns in an empty cell on the board**.
+
+**The game ends when the snake collides with a wall or with itself.**  Walls are represented by  `|` and `-`.
+
+
+### Motivation
+
+We chose the Snake game because it allowed us to explore some interesting questions:
+
+- Will the AI have difficulty learning as a result of the snake starting the game as a single point and growing as the game progresses?  We suspected that the scarcity of example game states containing long snakes might cause problems.
+
+- The game can also be described as having only two "effective" actions (Turn Left and Turn Right) among four buttons.  Can the AI learn that two of the available actions at any point in the game are ignored?
+
+Of course, there were also standard questions we wanted to answer:
+
+- How much is the AI impacted by the size of the game board?
+
+- How does performance differ between different network structures?  Would it be that bad to just apply a network structure that someone else used to learn a different game?
+
+- How much does the AI's performance rely on a good reward function?  Do we really need to include a time penalty to prevent the AI from stalling out the game to avoid death?
+
+(But mainly because it's simple to code up a working version, and most people are already familiar with how the game works. So there. You caught us.)
+
+## Deep reinforcement learning
+
+For those new to Q-learning (or deep Q-learning), we highly recommend the [blog post](https://www.nervanasys.com/demystifying-deep-reinforcement-learning/) by Tambet Matiisen.
+
+### Q-learning
+
+In short, Q-learning involves learning the entries in the Q matrix, where:
+
+- each row corresponds to a **state** $s$
+- each column corresponds to a possible **action** $a$
+- each entry $Q[s,a]$ contains the expected **long-term reward** for taking action $a$ given the state $s$, **ASSUMING** we will continue to take the "optimal" (in the long-term expected reward sense) actions as the game progresses.  
+
+Formally, this gives us the definition:
+
+$$Q[s,a] = r + \gamma \max_{a'} Q[s',a'] $$
+
+where:
+
+- $r$ is the **immediate reward** gained from making the state transition $s \to s'$ by taking action $a$.
+- $\gamma \in [0, 1]$ is a parameter that **discounts future rewards** due to randomness in the game.  Note that a majority of Snake state transitions are deterministic with the exception of the location of the random pellet.
+
+Supposing such a matrix were given to us, we'd be able to play a game perfectly by looking up each new state we enter and selecting the action with the maximum Q-value.  Such a strategy should (on average) maximize the total reward we accumulate as we play the game.
+
+We estimate the Q-matrix values by playing the game and performing updates based on observed **experience tuples** $(s, a, r, s')$:
+
+```
+initialize each Q[s,a] = 0.0
+while playing game:
+	if exploring:
+		choose random action to obtain experience tuple (s, a, r, s')
+		update Q matrix
+	if exploiting:
+		a = argmax(Q[s, :])
+		execute action to obtain experience tuple (s, a, r, s')
+		update Q matrix
+```
+
+where the update rule is:
+
+$$Q_{new}[s, a] = \alpha Q_{old}[s, a] + (1 - \alpha) \left(r + \gamma \max_{a'} Q_{old}[s',a'] \right)$$
+
+where $\alpha \in [0,1]$ is a learning rate parameter.
+
+### Deep Q-learning
+
+Unfortunately, even a simple 10 x 10 Snake board where each cell is either empty or contains `O` or `*` has $3^{100}$ possible states. Well, the true number is actually smaller since there are certain states that are impossible to reach; for example, the `O`'s must be contiguous and there is only one `*` at a time. 
+
+Still, the number of possible states is very large.  We'll never explore all the states in our lifetime, meaning we won't be able to update the Q matrix frequently enough to converge to a solution for each cell.  
+
+The "trick" is to view the Q matrix as a function that outputs the Q-value for given inputs $s$ and $a$.  Or equivalently, a vector-valued function that outputs a **vector** of Q-values (one for each action) for given input $s$.  Then we can approximate this **Q-function** using a parametric form like a linear model or (...drum roll...) a deep convolutional neural network.
+
+We train our Q-function by minimizing the **loss function** over our set of experience tuples called the **experience replay**:
+
+$$\arg\min_{\theta} \sum_{(s, a, r, s')} \left(Q_{\theta}(s) -  \left(r + \gamma \max_{a'} Q_{\theta}(s) \right) \right)^2 $$
+
+## Deep convolutional neural network
+
+We'll assume that the reader is familiar with deep neural networks.  If not, we recommend:
+
+- Playing around with this neural network [visualization tool](http://playground.tensorflow.org/) provided by the Tensorflow developers.
+- Working through their [tutorial](https://www.tensorflow.org/versions/master/tutorials/mnist/pros/) for fitting a convolutional neural network.
+
+And here are links to some reading material:
+
+- [Andrej Karpathy's notes](http://cs231n.github.io/) for a Stanford course on image recognition with convolutional neural networks
+- Quoc V. Le's deep learning tutorial [here](https://cs.stanford.edu/~quocle/tutorial1.pdf) and [here](https://cs.stanford.edu/~quocle/tutorial2.pdf).
+
+### Network structure
+
+We started out by imitating the network structure mentioned in the blog post that DeepMind used for Atari:  
+
+- 3 convolutional layers followed by 2 fully-connected layers
+- ReLU activation for hidden layers,and linear activation for the output layer
+- For the convolutional layers, an increasing number of filters with decreasing filter and stride size
+
+#### Input layer
+
+We began experiments with a $10 \times 10$ Snake board.  If we think of each state (in terms of an experience tuple) as consisting of $4$ consecutive frames of the board, then our input tensor is $n \times 10 \times 10 \times 4$ where $n$ corresponds to the batch size. 
+
+ In Tensorflow, that is:
+
+```python
+q_input = tf.placeholder(dtype=tf.float32, shape=[None, 10, 10, 4])
+```
+
+#### Convolutional layers
+
+For each convolutional layer, we use Tensorflow to specify:
+
+- The number of convolutional filters ⇒ `out_channels`
+- The height and width of each convolutional filter ⇒ `filter_height` and `filter_width`
+- The stride ⇒ `stride`
+
+For example, a reasonable choice for the **first convolutional layer**, given our $10 \times 10$ Snake board, was:
+
+```python
+params = {
+	'filter_height': 2,
+	'filter_width': 2,
+	`in_channels`: int(q_input.get_shape()[-1])
+	'out_channels': 16,
+	'stride': 1
+}
+init = tf.truncated_normal(shape=[params['filter_height'],
+								  params['filter_width'],
+								  params['in_channels'],
+								  params['out_channels']],
+						   stddev=0.1, mean=0.0)
+w_conv1 = tf.Variable(init)
+z_conv1 = tf.nn.conv2d(input=q_input,
+					   filter=w_conv1,
+					   strides=[1, params['stride'], params['stride'], 1],
+					   padding='VALID')
+h_conv1 = tf.nn.relu(z_conv1)
+```
+First, notice that we chose to derive `in_channels` from the number of `out_channels` in the previous layer.  For example, the previous layer was the input layer `q_input` with `out_channels = 4` because that was our choice of number of frames per State. 
+
+Second, specifying `padding='VALID'` means we don't want zero-padding.  For example, given our $10 \times 10$ input boards, passing $2 \times 2$ filters at strides of $1$ would produce a $9 \times 9$ higher-order image output.  We chose this because the network structure from the Matiisen blog post claimed that their first $84 \times 84$ image with $8 \times 8$ filter at stride of $4$ resulted in a $20 \times 20$ higher-order image output - implying that DeepMind also didn't use zero-padding. 
+
+
+Note that by setting the number of `in_channels` equal to the number of `out_channels` from the previous layer (which in this case is 4 frames), we ensure that each kernel output is a combination of values in 8 x 8 x 4 blocks.
+
+
+
+
+
+
