@@ -1,0 +1,52 @@
+
+What was team BellKor's model that won the 2007 Netflix prize?
+
+#### Obtain baseline estimates by solving the least squares problem
+
+$$\min_{b} \sum_{ui} (r_{ui} - (\mu + b_u + b_i))^2 + \lambda (\sum_u b_u^2 + \sum_i b_i^2) $$
+
+We can also add other features like interaction terms, number of users who rated Item $i$ (i.e. popularity), time taken for User $u$ to rate Item $i$ (i.e. personality), etc.
+
+
+#### Nearest neighbor regression using item-to-item similarities
+
+We can compute the similarity matrix between pairs of items based on the User-Item rating matrix.  
+
+For example, we can compute the Pearson correlation distance between any two columns $i$ and $j$ based on the common user support (i.e. using only the rows corresponding to users who rated both items).  Denote this distance $d_{ij}$.
+
+A $k$-nearest neighbor model could predict an unobserved rating:
+
+$$\widehat{r}_{ui} = b_{ui} + \frac{\sum_{j} d_{ij}(r_{uj} - b_{uj})}{\sum_j d_{ij}}$$
+
+where $b_{ui} = \mu + b_u + b_i$ is the baseline rating of User $u$ of Item $i$.  
+
+where $j$ denotes one of the $k$ nearest neighbors of Item $i$.
+
+A major problem arises when the $k$ nearest neighbors of item $i$ are unrated by user $u$.  In such a case, we'd like to default to the baseline $b_{ui}$.
+
+We could've also used user-to-user similarities, but Sawar et. al. found item similarities to be more efficient; i.e. generally fewer items than users means fewer pre-computations and faster retrieval.  Item similarities are also better from a practical perspective because letting users know about their use can help guide them towards tuning their own recommendations; they have a better sense of item similarities than their similarities with other users, and this knowledge can guide how they rate items.
+
+
+
+Note that item-based collaborative filtering is preferred to user-based collaborative filtering because 
+
+#### Sources
+
+See 
+https://pdfs.semanticscholar.org/2285/c262bc459b5ad96b2e16ccb755a44dc5f918.pdf
+
+In this paper, they estimated user and item effects as a preprocessing step and then fit the collaborative filtering methods on the residuals.
+
+$$e  = y - (\mu + b_u + b_i)$$
+
+I suspect they used indicator variables and least-squares estimation to do this step.  I suppose if we had features to represent users or items, this would be the time to use them.  It'd probably be better than having a fixed indicator effects because the estimates wouldn't be entirely reliable for users or items that don't show up often.  
+
+
+[Bell, Koren, and Volinsky (2007) paper describing first attempt at Netflix recommender problem using baseline effects and kNN regression](https://pdfs.semanticscholar.org/15e7/b5c1b43f7a8f097c752c071389ddf5173458.pdf).
+
+[Bell and Koren (2007) paper describing how to derive optimal weights for kNN regression](https://pdfs.semanticscholar.org/65f7/8de6184ebf2dac934909e1112e002b79aa56.pdf), as opposed to using the inverse of some arbitrary distance metric.
+
+[Koren (2008) paper describing a different form of the SVD](http://www.cs.rochester.edu/twiki/pub/Main/HarpSeminar/Factorization_Meets_the_Neighborhood-_a_Multifaceted_Collaborative_Filtering_Model.pdf).
+
+Time:
+http://sydney.edu.au/engineering/it/~josiah/lemma/kdd-fp074-koren.pdf
