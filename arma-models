@@ -283,3 +283,105 @@ But models with MA terms aren't linear in the parameters.  For example, an ARMA(
 
 $$y_t = \mu + \phi(y_{t-1} - \mu) + \epsilon_t + \psi \epsilon_{t-1}$$
 
+
+
+
+
+# time-series-notes
+
+
+These are notes summarizing main concepts from Brockwell and Davis time series forecasting text.
+
+## Classical decomposition
+
+Suppose we observe the sequence $y_1,\dots,y_n$.  
+
+#### Trend
+Assume the model:
+
+$$y_t = m_t + \epsilon_t$$
+
+where $m_t$ is a deterministic **trend** component, and $\epsilon_t$ is random noise with mean $0$.
+
+We can assume $m_t$ is some function of $t$ parameterized by $\theta$ which we estimate via usual regression model fitting procedures.  
+
+For example, the trend could be a polynomial function of time $m_t = \theta_0 + \theta_1 t + \theta_2 t^2$, and we can estimate the parameters using least squares minimization:
+
+$$\min_{\theta} \sum_{t=1}^n (y_t - m_t)^2$$
+
+#### Seasonality
+Assume the model:
+
+$$y_t = s_t + \epsilon_t$$
+
+where $s_t$ is a deterministic **seasonality** component, and $\epsilon_t$ is still random noise with mean $0$.
+
+We typically use a periodic function like a **Fourier expansion of order $k$** where:
+
+$$s_t = \gamma + \sum_{j=1}^k \left( \alpha_j \cos \frac{2\pi t j}{d} + \beta_j \sin \frac{2\pi t j}{d}\right)$$
+
+where $d$ is the number of observations in a single seasonal **period**.  For example, $d=12$ for annual seasonality in monthly observations.
+
+We can estimate $\gamma$, $\alpha_j$'s and $\beta_j$'s using least squares as well.  We do this by computing **seasonal features** corresponding to the $\cos$ and $\sin$ terms evaluated at each $t$, and subsequently regressing $y_t$ on these $2k$ features.
+
+Fitting a periodic function is also called **harmonic** regression.  Optimal $k$ can be selected via cross validation.
+
+The R package `forecast` has a function that generates the $n \times 2k$ matrix of seasonality features.  It has a requirement that $k \gt d/2$, but I'm not sure why this is necessary.
+
+#### Usage
+
+Typically, we perform the classical decomposition with both trend and seasonality components on the observed series.  Then, we take the residuals $e_t = y_t - m_t - s_t$ as our new series for fitting probabilistic models that assume **stationarity**.  
+
+In other words, the classical decomposition is a **preprocessing step** (like smoothing, differencing, removing outliers, Box-Cox transforming, etc.) since we assume the learned $m_t$ and $s_t$ terms are fixed upon performing likelihood-based modeling of $e_t$.
+
+## Stationary processes
+
+See other set of notes on stationarity and ARMA processes.
+
+
+
+
+#### Differencing
+
+$B$ is the backshift operator such that $B y_t = y_t$.  Then $\Delta^k y_t = (1 - B)^k y_t$.  We use Binomial theorem to evaluate the polynomial.  For trend, usually $k = 1, 2$ is enough.
+
+This has benefits over trend modeling:
+
+- Doesn't require parameter estimation
+- Allows trend to change over time (since change in slope represented by higher order differencing)
+- Can remove seasonality components by seasonal differencing $B^d y_t = y_{t-d}$, then differencing for trend ($d = 1$).
+
+
+
+
+
+
+
+
+
+
+
+
+# Evaluating performance
+
+We have a procedure that takes a stream of values $y_1,\dots,y_n$ and produces a forecast $\widehat{y}_{n+k} \approx y_{n+k}$.  We have several candidate procedures and want to select the one that produces the most accurate forecasts.  For now, let's say we're only interested in $k = 1$, or one-step forecasts.
+
+Then accuracy is a parameter of interest that we want to estimate.  In the cross-sectional data setting, if we're interested in $E[(y - \widehat{y})^2]$, then we can use the estimate $\frac{1}{m} \sum_{i=1}^m (y_i - \widehat{y}_i)^2$ where $m$ is the size of the test set.
+
+But this is more complicated in the time series setting because observations aren't independent.
+
+
+### Fixed origin
+
+We estimate some model $f_{1:}$
+
+- [Source 1](http://francescopochetti.com/pythonic-cross-validation-time-series-pandas-scikit-learn/)
+- Source 2
+
+
+### Rolling origin
+
+Suppose we knew that 
+
+We estimate some model $f_{1:100}$
+
