@@ -1,0 +1,78 @@
+
+---
+layout: post
+title: 'Temporal aggregation in time series forecasting'
+---
+
+The issue of **temporal aggregation** has arisen a few times in my time series projects, so I've decided to compile some thoughts on the matter.  
+
+Some questions include:
+
+1. Suppose I have separate black box forecasters for predicting each individual hierarchy.  For example, I can have a daily, weekly, and monthly model for the same time series.
+
+How can I ensure that my daily forecasts sum up to equal my weekly, monthly, etc. forecasts if they're each generated independently by separate models?  
+
+2. Can I use my weekly, monthly, etc. forecasting models to improve the accuracy of my daily forecasts? 
+
+## 
+
+## Naive approach
+
+## Temporal aggregation induces hierarchical time series
+
+
+
+## Naive method
+
+
+
+### Hyndman's "optimal" combination
+
+Stacking the series values in the hierarchy:
+
+$$\begin{pmatrix} y_t \\ y_{t,1} \\ \vdots \\ y_{t,n_k} \end{pmatrix} = \begin{pmatrix} 1 \end{pmatrix}$$
+
+
+Let's say we're performing one-step predictions or $h = 1$ for each time series model in the hierarchy.  For example, if we have monthly and daily data, then we have a forecast for the next month for the most aggregate series, and a set of $30$ or $31$ values for each day of the next month for the least aggregate series.
+
+
+
+### Generalization of "optimal" combination
+
+We move the matrix $S$ into the cost function and try to balance between two tasks: Enforcing coherence between the series according to $S$ and enforcing that they remain individually good at predicting their respective series.
+
+$$\min_f \Vert \widehat{y} - f(\widehat{y}) \Vert - \lambda \Vert f(\widehat{y}) - S f(\widehat{y}) \Vert$$
+
+where $f$ is a transformation on $\widehat{y}$.
+
+This is kind of like stacking where we try to learn some $f$ that optimally transforms a set of $\widehat{y}$ predictions to a single $\widehat{y}$ that is more accurate.  The difference is that our targets in this averaging is the entire hierarchy.  
+
+This loss assumes the $\widehat{y}$ individually are good at predicting their respective series, so this is just learning an optimal combination to enforce coherence while keeping the predictions close to what they were originally.
+
+## Can this guide a general learning problem?
+
+Let's change the problem space.  Suppose now that we don't have any black boxes that generate forecasts for each hierarchy, but we want to design a learner to do so with coherence in mind.
+
+$$\min_f \Vert y - f(y) \Vert$$
+
+## What about an RNN?
+
+Similar to how word2vec expands the contexts to form correlated observations, we can construct the dataset:
+
+$\{(y_{day1}, y_{week1}, y_{month1}), (y_{day2}, y_{week1}, y_{month1}), \dots\}$
+
+And learn an RNN that can predict the next vector based on past vectors.  We can even include covariates to these tuples on the daily, weekly, or monthly basis.  For example, indicators for each day of week or month of year.  Or fourier terms.
+
+
+#### Sources
+[Improving forecasting by estimating time series structural
+components across multiple frequencies](http://opus.bath.ac.uk/52241/1/IJF_2014_MAPA_post_print_.pdf) by 2014
+
+[Improving forecasting via multiple temporal aggregation](http://eprints.lancs.ac.uk/70550/1/Improving_forecasting_via_multiple_temporal_aggregation_Foresight_.pdf) by Fotios Petropoulos and Nikolaos Kourentzes (2014).
+
+[Forecasting with Temporal Hierarchies](https://mpra.ub.uni-muenchen.de/66362/1/MPRA_paper_66362.pdf) by George Athanasopoulos, Rob J. Hyndman, Nikolaos Kourentzes and Fotios Petropoulos.
+
+[Hyndman's online text](https://www.otexts.org/fpp/9/4)
+
+
+Data source: https://datamarket.com/data/set/235h/mean-daily-precipitation-saugeen-river-near-port-elgin-jan-01-1988-to-dec-31-1991#!ds=235h&display=line
