@@ -1,0 +1,123 @@
+
+
+## MLE of mixture of univariate Gaussians
+
+Can we compute the MLEs of a mixture model using gradient descent instead of expectation-maximization?  Technically, yes!
+
+First, let's generate $n=10000$ observations from a mixture of three univariate Gaussians.
+
+```python
+NUM_COMPONENTS = 3
+TRUE_PROBS = np.array([0.5, 0.3, 0.2])
+TRUE_MU = np.array([-1.5, 0.0, 1.0])
+TRUE_SIGMA = np.array([0.5, 0.4, 0.3])
+SAMPLE_SIZE = 10000
+
+np.random.seed(0)
+z_obs = np.random.choice(range(NUM_COMPONENTS),
+                         size=SAMPLE_SIZE,
+                         p=TRUE_PROBS)
+x_obs = np.random.normal(loc=TRUE_MU[z_obs],
+                         scale=TRUE_SIGMA[z_obs],
+                         size=SAMPLE_SIZE)
+```
+
+![mixture3]({{ site.url }}/images/posts/mixture3.jpg)
+
+Remember to perform the usual standardization via mean centering and standard deviation scaling.
+
+```python
+CENTER = x_obs.mean()
+SCALE = x_obs.std()
+x_obs = (x_obs - CENTER) / SCALE
+```
+
+#### Parameterization to enforce weight constraints
+
+The overall code structure for defining tensors is similar to what we've seen before, but we additionally need to consider how to parameterize the component weights, which are constrained to be positive and sum to one.  
+
+```python
+# tensor for data
+x = tf.placeholder(dtype=tf.float32)
+
+# tensors representing parameters and variables
+logit = tf.Variable(initial_value=tf.random_normal(shape=[NUM_COMPONENTS],
+                                                   seed=RANDOM_SEED,
+                                                   **INIT_LOGIT_PARAMS),
+                    dtype=tf.float32)
+p = tf.nn.softmax(logits=logit)
+mu = tf.Variable(initial_value=tf.random_normal(shape=[NUM_COMPONENTS],
+                                                seed=RANDOM_SEED,
+                                                **INIT_MU_PARAMS),
+                 dtype=tf.float32)
+phi = tf.Variable(initial_value=tf.random_normal(shape=[NUM_COMPONENTS],
+                                                 seed=RANDOM_SEED,
+                                                 **INIT_PHI_PARAMS),
+                  dtype=tf.float32)
+sigma = tf.square(phi)
+
+# loss function
+categorical_dist = tf.contrib.distributions.Categorical(probs=p)
+gaussian_dists = []
+for i in range(NUM_COMPONENTS):
+    gaussian_dists.append(tf.contrib.distributions.Normal(loc=mu[i],
+                                                          scale=sigma[i]))
+mixture_dist = tf.contrib.distributions.Mixture(cat=categorical_dist,
+                                                components=gaussian_dists)
+log_prob = mixture_dist.log_prob(value=x)
+neg_log_likelihood = -1.0 * tf.reduce_sum(log_prob)
+
+# gradient
+grad = tf.gradients(neg_log_likelihood, [logit, mu, phi])
+```
+
+If you only have two components, you can define the first component weight $p$ to be the expit of some unbounded quantity $p = \frac{1}{1+e^{-\xi}}$ where $\xi \in \mathbb{R}$, and the other component weight to be $1 - p$.  The expit ensures the weights adhere to the weight constraints.
+
+More generally, you can define an unbounded value $\xi \in \mathbb{R}$ for each component and the vector of component weights as the softmax the $\xi$ vector.  This is more convenient than explicitly defining the last component weight as $p_k = 1 - \sum_{j \neq k} p$.  Even if they technically aren't true logits, I still refer to the $\xi$'s as "logits." 
+
+## asdf
+
+- Scaling by order statistics is worse than by mean/std.  This is because of N(0,1) initializations.
+
+- Idea is that the way we parameterize our Gauss components, the mean is dependent on sigma (e.g. units)
+- If our initialization of sigma is too small (e.g. smaller than SD of full data), then gradient steps
+- for mu, sigma parameterization will quickly converge to a small component with tight sigma; hence, one large cluster.
+- Setting sigma to be initialized larger helps mu estimate move around per gradient step.
+- This wouldn't be problem with natural parameterization.
+
+- Try initialization with Kmeans or other heuristic?
+
+- More data, more smooth
+
+- Parameterization of p = tf.sigmoid(logit) and (1-p)  is fine, but for higher dimension
+- final prob is (1 - sum(ps)) can result in unstable because sum of those ps can exceed 1.
+- Softmax takes care of this
+
+```python
+  iter |           p           |          mu           |         sigma         |      loss       |      grad      
+     1 | (0.299, 0.384, 0.317) | (-0.04, 0.209, 0.016) | (0.920, 1.463, 1.032) | 14512.232421875 | 2768.6455078125
+   101 | (0.316, 0.348, 0.336) | (-0.13, 0.222, -0.07) | (0.902, 1.252, 0.940) | 14249.794921875 | 1466.5753173828
+   201 | (0.321, 0.340, 0.339) | (-0.20, 0.338, -0.13) | (0.872, 1.123, 0.939) | 14164.671875000 | 641.98284912109
+   301 | (0.321, 0.353, 0.326) | (-0.34, 0.487, -0.15) | (0.709, 1.059, 0.952) | 14068.259765625 | 814.10546875000
+   401 | (0.350, 0.364, 0.286) | (-0.56, 0.634, -0.06) | (0.525, 0.982, 0.976) | 13753.826171875 | 1499.6983642578
+   501 | (0.388, 0.366, 0.246) | (-0.74, 0.768, 0.070) | (0.413, 0.851, 0.934) | 13381.964843750 | 1673.9219970703
+   601 | (0.397, 0.373, 0.230) | (-0.86, 0.850, 0.126) | (0.361, 0.752, 0.837) | 13204.180664062 | 551.73583984375
+   701 | (0.398, 0.369, 0.233) | (-0.89, 0.907, 0.092) | (0.357, 0.728, 0.742) | 13184.908203125 | 203.25216674805
+   801 | (0.403, 0.362, 0.235) | (-0.91, 1.023, -0.01) | (0.353, 0.681, 0.499) | 13105.113281250 | 758.33312988281
+   901 | (0.458, 0.311, 0.231) | (-0.90, 1.202, 0.166) | (0.359, 0.568, 0.318) | 12923.162109375 | 998.78698730469
+  1001 | (0.509, 0.246, 0.245) | (-0.83, 1.432, 0.318) | (0.397, 0.394, 0.264) | 12597.632812500 | 1499.3867187500
+  1101 | (0.512, 0.205, 0.283) | (-0.82, 1.565, 0.373) | (0.399, 0.243, 0.308) | 12356.130859375 | 227.55073547363
+  1201 | (0.504, 0.199, 0.298) | (-0.83, 1.572, 0.364) | (0.391, 0.235, 0.324) | 12351.555664062 | 45.564777374268
+
+Loss function convergence in 1208 iterations!
+
+Fitted MLE:
+Component 1: [p=0.5034, mu=-1.5136, sigma=0.4910]
+Component 2: [p=0.1986, mu=1.5085, sigma=0.2953]
+Component 3: [p=0.2980, mu=-0.0091, sigma=0.4077]
+
+True Values:
+Component 1: [p=0.5000, mu=-1.5000, sigma=0.5000]
+Component 2: [p=0.3000, mu=0.0000, sigma=0.4000]
+Component 3: [p=0.2000, mu=1.5000, sigma=0.3000]
+```
