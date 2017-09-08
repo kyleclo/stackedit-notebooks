@@ -1,0 +1,357 @@
+---
+layout: post
+title: 'A gentle intro to Bayesian changepoint detection'
+---
+
+Let's talk changepoint detection!
+
+At work, I'm often asked to build data pipelines that spit out forecasted values for each of $N$ data streams.  To improve predictive performance, I'll sometimes include a preprocessing procedure to toss out "old/outdated" data while retaining "recent/relevant" data to use for model selection and training.  Assuming $N$ is large enough such that I can't be choosing cut-offs by hand, automated changepoint detection can be a useful tool.
+
+There are a lot of techniques out there, but I particularly like the Bayesian approach described in Barry and Hartigan (1992) and Fearnhead (2006) because it captures uncertainty around the number of changepoints as well as their locations.
+
+Yet, I don't like the way the material is presented in the referenced papers, so I tried organizing my own notes. This post is the result of that effort.
+
+While the content here is mainly something for me to refer back to, I hope anyone who reads this will also find it interesting and possibly helpful.  And I'd like to mention that it's still worth reading the two papers referenced above since I'm cutting a lot of material except anything that I feel is core to understanding their approach.
+
+
+# Changepoint detection as a partition problem
+
+We observe a sequence of observations $\{y_1,\dots,y_n\}$.  Our goal is to find a **partition** 
+
+$$\{ y_1,\dots,y_{\tau_1} \}, \{y_{\tau_1+1},\dots,y_{\tau_2}\},\dots,\{y_{\tau_m+1},\dots,y_n\}$$
+
+such that a different probability model holds within each subsequence. The indices $\tau_1,\tau_2,\dots,\tau_m$ are **changepoints** and the resulting subsequences are **blocks**.
+
+The changepoints are integer-valued and ordered:
+
+$$1 \leq \tau_1 \lt \tau_2 \lt \cdots \lt \tau_m \lt  n$$
+
+A sequence can have between $0$ and $(n-1)$ changepoints.  In the extreme cases, the entire sequence can form one whole block, or each observation can be its own block.
+
+We denote the number of changepoints with $m$, which partition the sequence into $(m+1)$ blocks. 
+
+# Product partition model
+
+Hartigan (1990) developed the **product partition model** (PPM) as a way to approach random partition problems.  It was later adapted for changepoint problems by Barry and Hartigan (1992).
+
+The model has two parts:
+
+- A [prior distribution](#prior-over-partitions) over partitions where the probability mass function $f(\rho)$ is the product of terms corresponding to block occurrences.
+
+- Assumed conditional independence between observations in different blocks.  This means the [likelihood function](#likelihood-function) $f(y_1,\dots,y_n \vert \rho)$ can be factorized.
+
+These can be used to derive a [posterior distribution](#posterior-over-partitions) $f(\rho \vert y_1,\dots,y_n)$ from which we can sample random partitions. 
+
+# Prior over partitions
+
+The PPM assumes a prior over random partitions where the mass function has some product-form, like:
+
+$$f(\rho) \propto c_1 \cdot c_2 \cdots c_{m+1}$$
+
+where the product terms correspond to block occurrences.
+
+
+A partition is entirely specified given the number of observations $n$ and the sequence of changepoints $\{\tau_1,\tau_2,\dots,\tau_m\}$.
+
+
+
+### Markov chain assumption
+
+If we assume the sequence of changepoints forms a **Markov chain**, then $f(\rho)$ would be the product of transition probabilities:
+
+$$f(\rho) = f(\tau_1) \left( \prod_{j=2}^m f(\tau_j \vert \tau_{j-1}) \right) \left( 1 - \sum_{\tau_{m+1}=\tau_m+1}^{n-1} f(\tau_{m+1} \vert \tau_m) \right) $$
+
+where $n$ and $m$ are fixed quantities.
+
+Let's look at the terms:
+
+- $f(\tau_1)$ is the initial distribution of the first changepoint $\tau_1$.  It has support in $\{1,2,\dots,n-1\}$.
+
+- $f(\tau_j \vert \tau_{j-1})$ is the distribution of the $j^{th}$ changepoint given the previous changepoint location.  It has support in $\{\tau_{j-1}+1,\dots,n-1\}$.
+
+- $1 - \sum_{\tau_{m+1}=\tau_m+1}^{n-1} f(\tau_{m+1} \vert \tau_m)$ is the probability that there is no further changepoint in the sequence given we've observed the location of the last changepoint $\tau_m$.
+
+*It's kind of hard to specify the mass functions $f(\tau_1), f(\tau_2 \vert \tau_1), \dots, f(\tau_{m+1} \vert \tau_m)$ with a known family of distributions since they all have different supports that depend on the previous changepoint.*
+
+### Point process prior
+
+Pievatolo and Green (1998) alternatively proposed that we view changepoints as being drawn from a **point process** specified by a probability mass function $g(t)$, where $t \in \{1,2,\dots\}$ is the amount of time between two successive changepoints. 
+
+Then the prior over partitions can be specified in terms of $g(t)$:
+
+$$f(\rho) = g(\tau_1) \left( \prod_{j=2}^m g(\tau_j - \tau_{j-1}) \right) \left( 1 - G(n - \tau_m) \right)$$
+
+where $n$ and $m$ are fixed, and $G(t) = \sum_{j=1}^t g(t)$ is the cumulative distribution function of $g(t)$.  
+
+The point process prior is appealing because we only need to specify a distributional form for $g(t)$ to specify the entire prior.
+
+<br>
+
+A simple choice is to model changepoints as being generated through a Bernoulli process.  This means at each point in time, an independent coin toss determines whether we begin a new block with probability $p$.
+
+Then one specification could be that waiting times between successive changepoints are drawn from a geometric distribution where $g(t) = p(1-p)^{t-1}$ and $G(t) = 1- (1-p)^t$.
+
+More generally, we could wait every $k$ hits in the Bernoulli process to begin a new block.  Then waiting times are drawn from a negative binomial distribution where $g(t) = {t - 1 \choose k - 1} p^k (1-p)^{t-k}$.
+
+<br>
+
+Here's an example implementation in  `R`:
+
+```R
+# pmf of negative binomial distribution
+pmfNegBinom <- function(t, p, k){
+	if(t < k) return(NA)
+	else return(choose(t-1, k-1) * p^k * (1-p)^(t-k))
+}
+
+# cdf of negative binomial distribution
+cdfNegBinom <- function(t, p, k){
+	if(t < k) return(0)
+	else return(pmfNegBinom(t, p, k) + cdfNegBinom(t-1, p, k))
+}
+
+# pmf of partition under point process prior
+pmfPartitionPointProcessPrior <- function(n, taus, g, G){
+	m <- length(taus)
+	if(m < 1) return( 1 - G(n - 1) )
+	else if(m == 1) return( g(taus) * (1 - G(n-taus)) )
+	else return( g(taus[1]) * prod(sapply(diff(taus), g)) * (1 - G(n-taus[m])) )
+}
+
+# probability of cutting 100 points into two equal blocks?
+g <- function(t) pmfNegBinom(t, p=1, k=1)
+G <- function(t) cdfNegBinom(t, p=1, k=1)
+pmfPartitionPointProcessPrior(n=100, taus=1:99, g, G)
+```
+
+<hr>
+
+### Generating random partitions from prior
+
+We can generate random partitions from $f(\rho)$ by iteratively sampling changepoints:
+
+- First, draw from $g(t)$.  
+
+	- If $t \in \{ 1,2,\dots,n-1\}$, then assign $\tau_1 = t$.
+
+	- Else, stop.  There are zero changepoints in this sequence.
+
+- If the previous draw of $\tau_{j-1}$ was successful, then draw again from $g(t)$.
+
+	- Compute $s = \tau_{j-1} + t$.  If $s \leq n-1$, then assign $\tau_j = s$.
+
+	- Else, stop.  There are no further changepoints beyond $\tau_{j-1}$ in this sequence.
+
+When the procedure terminates, we'll have drawn a random sequence of changepoints (and indirectly induced the number of changepoints $m$ in the process).
+
+<br>
+
+Here is an example of a more compact implementation in `R`:
+
+```R
+# parameters
+n <- length(y)
+g <- function(t) return(pmfNegBinom(t, p=0.1, k=2))
+
+# generate a random partition
+taus <- 0
+while(TRUE){
+  s <- tail(taus, 1) + discreteSample(N=1, pmf=g)
+  if(s < n) taus <- c(taus, s)
+  else break
+}
+
+# results
+print(paste('The partition has m = ', length(taus[-1]),
+            ' changepoints at indices', paste(taus[-1], collapse = ' ')))
+```
+
+where `discreteSample(N, pmf)` can be any function that draws $N$ times from a discrete distribution.  We present an efficient one [later](#sampling-from-a-discrete-distribution).
+
+<hr>
+
+
+
+# Likelihood function
+
+### Conditional independence between blocks
+
+The PPM also assumes that **observations in different blocks are conditionally independent given the partition**:
+
+$$f(y_1,\dots,y_n \vert \rho) = f_{[1,\tau_1]} f_{[\tau_1+1,\tau_2]} \cdots f_{[\tau_m+1,n]} $$
+
+where each $f_{[\cdot,\cdot]}$ term, called a **data factor**, is the joint distribution of the observations, **given they belong to the same block**. 
+
+Specifically:
+
+$$\begin{align}
+f_{[1,\tau_1]} &=  f(y_1,\dots,y_{\tau_1} \vert \rho)\\
+&= f(y_1,\dots,y_{\tau_1} \vert \tau_1, \tau_2, \dots, \tau_m) \\
+&= f(y_1,\dots,y_{\tau_1} \vert \tau_1) \\
+\end{align}$$
+
+where Line 3 holds is due to the conditional independence between blocks.
+
+And similarly:
+
+$$\begin{align}
+f_{[\tau_1+1,\tau_2]} &= f(y_{\tau_1+1},\dots,y_{\tau_2} \vert \tau_1, \tau_2) \\
+&\vdots \\
+f_{[\tau_{m-1}+1,\tau_m]} &= f(y_{\tau_m+1},\dots,y_{\tau_m} \vert \tau_{m-1}, \tau_m) \\
+f_{[\tau_m+1,\tau_n]} &= f(y_{\tau_m+1},\dots,y_n \vert \tau_m) 
+\end{align}$$
+
+<hr>
+
+### Parameterization of block joint distributions
+
+We assume blocks are drawn from some common family of joint distributions, and differences in probability model between blocks are expressed as differences in parameter values.
+
+*For example, observations in the first block are drawn jointly from $Normal(\mu_1,\Sigma_1)$, the second block from $Normal(\mu_2,\Sigma_2)$, and so on.*
+
+<br>
+
+Keeping to our Bayesian framework, let the parameters of the block joint distributions $\theta_{[1,\tau_1]},\theta_{[\tau_1+1,\tau_2]}\dots,\theta_{[\tau_m+1,n]}$ be drawn independently from their respective priors. Then each data factor can be derived by marginalizing out the parameter:
+
+$$f_{[\tau_{j-1}+1,\tau_j]} = \int \underbrace{f\left(\theta_{[\tau_{j-1}+1,\tau_j]}\right)}_{j^{th}\text{ block prior}} \underbrace{f\left(y_{\tau_{j-1}+1},\dots,y_{\tau_j} \vert \tau_{j-1}, \tau_j, \theta_{[\tau_{j-1}+1,\tau_j]}\right)}_{\text{e.g. } Normal(\mu_j,\Sigma_j)} d \theta_{[\tau_{j-1}+1,\tau_j]}$$
+
+<br>
+
+*We view blocks as single draws from their respective joint distributions. This specification is difficult to work with because the dimension of a block parameter is dependent on the length of its corresponding block (i.e. length of mean vector, possible within-block correlation terms, etc.).*
+
+<hr>
+
+### Parameterization of individual observations
+
+A more practical specification asks that we view each observation $y_i$ as being drawn from its own distribution $f(y_i \vert \theta_i)$ such that the $\theta_i$'s are **equal for observations within the same block**. 
+
+In other words, there is a sequence of $\{\theta_1,\theta_2,\dots,\theta_n\}$ where our goal is to find a partition:
+
+$$\{ \underbrace{\theta_1,\dots,\theta_{\tau_1}}_{\text{all equal to }\theta_1} \},\{ \underbrace{\theta_{\tau_1+1},\dots,\theta_{\tau_2}}_{\text{all equal to }\theta_{\tau_1+1}} \},\dots,\{ \underbrace{\theta_{\tau_m+1},\dots,\theta_n}_{\text{all equal to }\theta_{\tau_m+1}+1} \}$$
+
+<br>
+
+Since parameter dimension no longer depends on block length, we can assume that the shared parameter value for each block is drawn independently from a prior $f(\theta)$.
+
+*For example, suppose $y_1$ is drawn from $Poisson(\lambda_1)$, $y_2$ from $Poisson(\lambda_2)$, and so on:* 
+
+- *If $y_1$ and $y_2$ belong to the same block, then $\lambda_1 = \lambda_2$ where $\lambda_1$ is drawn from the prior $f(\lambda)$. *
+
+- *If $y_1$ and $y_2$ belong to different blocks, then $\lambda_1 \neq \lambda_2$ where $\lambda_2$ is also drawn from $f(\lambda)$.*
+
+<br>
+
+If we also assume **each observation is conditionally independent of all other observations given its corresponding parameter**, then we can factorize the joint distribution in the integrand of each data factor:
+
+$$f_{[\tau_{j-1}+1,\tau_j]} = \int f(\theta) \prod_{i=\tau_{j-1}+1}^{\tau_j} f(y_i \vert \theta) d\theta $$
+
+where assuming a conjugate prior for $f(\theta)$ allows for an exact derivation.
+
+*I like to think of this conditional independence assumption as reminiscent of a hidden Markov model (HMM) where $\theta_i$'s are hidden states and $y_i$'s are emissions.*
+
+
+# Posterior over partitions
+
+### Bayes theorem
+
+The PPM's [prior](#prior-over-partitions) and [likelihood](#likelihood-function), both of which are products of $(m+1)$ terms, result in a posterior distribution over partitions that also has a product form:
+
+$$\begin{align}
+f(\rho \vert y_1,\dots,y_n) &\propto f(\rho) f(y_1,\dots,y_n \vert \rho) \\
+&\propto c_{[1,\tau_1]}f_{[1,\tau_1]} \cdots c_{[\tau_m+1,n]} f_{[\tau_m+1,n]}
+\end{align} $$
+
+where each $c_{[\cdot,\cdot]}f_{[\cdot,\cdot]}$ term is called a **posterior cohesion**. 
+
+<hr>
+
+### Generating random partitions from posterior
+
+Since the posterior also has a product form, we can also generate random partitions from it through the same iterative changepoint sampling scheme presented [earlier](#generating-random-partitions-from-prior):
+
+- First, draw from $f(\tau_1 \vert y_1,\dots,y_n)$.  
+
+	- If $t \in \{ 1,2,\dots,n-1\}$, then assign $\tau_1 = t$.
+
+	- Else, stop.  There are zero changepoints in this sequence.
+
+- If the previous draw of $\tau_{j-1}$ was successful, then draw again from $g(t)$.
+
+	- Compute $s = \tau_{j-1} + t$.  If $s \leq n-1$, then assign $\tau_j = s$.
+
+	- Else, stop.  There are no further changepoints beyond $\tau_{j-1}$ in this sequence.
+
+The procedure is identical except we replace the prior mass functions with their posterior counterparts.  That is, we iteratively sample from $f(\tau_1 \vert y_1,\dots,y_n)$, $f(\tau_2 \vert \tau_1, y_1,\dots,y_n)$, and so on. 
+
+<font color = 'red'>here</font>
+
+Fearnhead (2006) derived these posterior transition probabilities. 
+
+For the first changepoint:
+
+$$\begin{align}
+f(\tau_1 \vert y_1,\dots,y_n) &= \frac{f(\tau_1, y_1,\dots,y_n)}{f(y_1,\dots,y_n)} \\
+&= \frac{ \overbrace{f(\tau_1)}^{= g(\tau_1)} \overbrace{f(y_1,\dots,y_{\tau_1} \vert \tau_1)}^{=f_{[1,\tau_1]}} \overbrace{ f(y_{\tau_1+1},\dots,y_n \vert \tau_1)}^{Q(\tau_1+1)} }{\underbrace{f(y_1,\dots,y_n)}_{Q(1)}} 
+\end{align}$$
+
+And for subsequent changepoints:
+
+$$\begin{align}
+f(\tau_j \vert \tau_{j-1}, y_1,\dots,y_n) &= \frac{f(\tau_j, y_1,\dots,y_n \vert \tau_{j-1})}{f(y_1,\dots,y_n \vert \tau_{j-1})} \\
+&= \frac{f(\tau_j \vert \tau_{j-1}) \overbrace{f(y_1,\dots,y_{\tau_{j-1}} \vert \tau_{j-1}, \tau_j)}^{\text{cancels!}}  f(y_{\tau_{j-1}+1},\dots,y_{\tau_j} \vert \tau_{j-1}, \tau_j) f(y_{\tau_j+1},\dots,y_n \vert \tau_{j-1}, \tau_j)}{ \underbrace{f(y_1,\dots,y_{\tau_{j-1}} \vert \tau_{j-1})}_{\text{cancels!}} f(y_{\tau_{j-1}+1}\dots,y_n \vert \tau_{j-1})} \\
+&= \frac{\overbrace{f(\tau_j \vert \tau_{j-1})}^{=g(\tau_j - \tau_{j-1})} \overbrace{f(y_{\tau_{j-1}+1},\dots,y_{\tau_j} \vert \tau_{j-1}, \tau_j)}^{=f_{[\tau_{j-1}+1,\tau_j]}} \overbrace{f(y_{\tau_j+1},\dots,y_n \vert \tau_{j-1}, \tau_j)}^{Q(\tau_j+1)} }{ \underbrace{f(y_{\tau_{j-1}+1},\dots,y_n \vert \tau_{j-1})}_{Q(\tau_{j-1}+1)} } 
+\end{align}$$
+
+The only unknowns are the $Q(\cdot)$ terms, which we can compute using a [recursive procedure](#recursions) shown in the next section.
+
+# Recursions
+
+
+
+
+# Sampling from a discrete distribution
+
+Fearnhead (2006) presented a **sequential Monte Carlo sampling** algorithm by Carpenter et. al. (1999) that allows us to generate $n$ independent draws from a finite, discrete probability mass function in $\mathcal{O}(n)$ time.  
+
+Here's an implementation in `R`:
+
+```
+discreteSample <- function(n, pmf){
+	# n+1 independent draws from any positive, continuous distribution
+	z <- rexp(n+1, rate=1)
+	u <- z / sum(z)
+	
+	cumSum <- u[1]; cumProb <- 0; k <- 1
+	sampledValues <- numeric(n)
+	i <- 1
+	while(i <= n){
+		if(cumSum < cumProb + pmf(k)){
+			sampledValues[i] <- k
+			cumSum <- cumSum + u[i+1]
+			i <- i + 1
+		}
+		else{
+			cumProb <- cumProb + pmf(k)
+			k <- k + 1
+		}
+	}
+	return(sampledValues)
+}
+```
+
+We can see that the algorithm will converge since `cumSum` is always less than one while `cumProb` will eventually equal one.  
+
+*It's fixed here, but note that there is a typo in the `cumSum` term in the pseudocode for this algorithm in Fearnhead (2006).*
+
+This algorithm is a sequential Monte Carlo algorithm which combines sequential importance sampling and resampling methods.
+
+# References
+*Barry, D., & Hartigan, J. A. (1992). Product partition models for change point problems. The Annals of Statistics, 260-279.*
+
+*Carpenter, J., Clifford, P., & Fearnhead, P. (1999). Improved particle filter for nonlinear problems. IEE Proceedings-Radar, Sonar and Navigation, 146(1), 2-7.*
+
+*Fearnhead, P. (2006). Exact and efficient Bayesian inference for multiple changepoint problems. Statistics and computing, 16(2), 203-213.*
+
+*Hartigan, J. A. (1990). Partition models. Communications in statistics-Theory and methods, 19(8), 2745-2756.*
+
+*Pievatolo, A., & Green, P. J. (1998). Boundary detection through dynamic polygons. Journal of the Royal Statistical Society: Series B (Statistical Methodology), 60(3), 609-626.*
