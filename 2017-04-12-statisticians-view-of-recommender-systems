@@ -1,0 +1,188 @@
+
+Here are some notes that depict how I understand the recommender system problem.  This post is inspired by the frustration I endured while trying to map concepts in the recommender literature to statistical concepts that I'm more comfortable with.  
+
+Lecture: 
+
+
+One thing I found lacking was practical considerations of recommender systems deployed in practice.  For example, how to deal with addition of new users, new items, new preferences of existing user-item pairs, or changes to existing preferences.
+
+----------
+
+
+http://cs.gmu.edu/~hrangwal/files/Week8-RECSYS.pdf
+
+## Prediction problem
+
+Suppose we observe transactions in the form tuples $(y_{ui}, u, i)$ where:
+
+- $u$ represents a User
+- $i$ represents an Item
+- $y_{ui}$ is a score representing the User $u$'s preference for that Item $i$
+
+Let there be $N$ total Users and $K$ total Items.  Then the **User-Item matrix**
+
+$$\begin{array}{ccccc}
+& Item 1 & Item 2 & \dots & Item K \\
+User 1 & y_{11} & y_{12} & \dots & y_{1K} \\
+User 2 & y_{21} & y_{22} & \dots & y_{2K} \\
+\vdots & \vdots & \vdots & \ddots & \vdots \\
+User N & y_{N1} & y_{N2} & \dots & y_{NK} \\
+\end{array}$$
+
+contains the preference scores for all possible User-Item pairings.  Unfortunately, many of these scores are **missing** because not every User has a score provided for every Item, so our **observed** matrix looks more like:
+
+$$\begin{array}{ccccc}
+& Item 1 & Item 2 & \dots & Item K \\
+User 1 & ? & y_{12} & \dots & ? \\
+User 2 & y_{21} & ? & \dots & ? \\
+\vdots & \vdots & \vdots & \ddots & \vdots \\
+User N & ? & ? & \dots & y_{NK} \\
+\end{array}$$
+
+The goal is to learn a function that can **predict the preference scores for these missing User-Item pairs**.  Let's denote these predictions $\widehat{y}_{ui}$.
+
+Suppose we had such a function.  Then we could fill in the missing entries of the matrix:
+
+$$\begin{array}{ccccc}
+& Item 1 & Item 2 & \dots & Item K \\
+User 1 & \widehat{y}_{11} & y_{12} & \dots & \widehat{y}_{1K} \\
+User 2 & y_{21} & \widehat{y}_{22} & \dots & \widehat{y}_{2K} \\
+\vdots & \vdots & \vdots & \ddots & \vdots \\
+User N & \widehat{y}_{N1} & \widehat{y}_{N2} & \dots & y_{NK} \\
+\end{array}$$
+
+and provide Item recommendations to a User (called the **active** User) by selecting the **largest** $\widehat{y}$ terms in the corresponding row.
+
+Note that the literature seems to generally treat preference scores as fixed quantities, but we could view them as stochastic response variables as well.  For example, if Users can rate the same Item multiple times, we would instead be estimating their **mean**  preferences $\mu_{ui}$.
+
+## Taxonomy
+
+In short:
+
+- Content and Demographic-based systems make use of Item and User features
+- Collaborative filtering systems don't explicitly use any User/Item features, but instead use other Users' Item preferences
+- Hybrid systems use both
+
+## Content and Demographic-based systems
+
+There are two main problems for content-based systems:
+
+- Choosing the feature representation of the Items
+- Choosing the model that predicts a response given these Item features
+
+Once features are chosen, the learning task involves training a function $f$ such that:
+
+$$y_{ui} \approx f(UserFeatures_u, ItemFeatures_i)$$
+
+This is our usual classification / regression problem where the training data is comprised of tuples $(y_{ui}, UserFeatures_u, ItemFeatures_i)$.  
+
+See [Basu et. al. (1998) paper demonstrating content-based system for movie recommendations](https://pdfs.semanticscholar.org/ae30/f8fc5a969d2d14ae066db4cd07d86fadbf42.pdf).
+
+### Usage in information retrieval
+
+The most common use of content-based recommender systems is in **information retrieval**.  In these cases, Items are documents that can be represented by tf-idf score vectors or averaged word embedding (e.g. word2vec) vectors.
+
+A cool example is in music information retrieval in which Items are songs.  [A paper by van den Oord et. al. (2013) provide an example of using deep convolutional neural networks to learn latent factors that can serve as high-level features characterizing songs](http://papers.nips.cc/paper/5004-deep-content-based-music-recommendation.pdf).  
+
+I suspect problems in which Items can be characterized by observable "natural" features (e.g. image pixel intensities, audio signal frequencies, document text) are good candidates for content-based approaches that use deep learning to obtain higher-order features.
+
+For such problems, an example recommendation approach might be:
+
+1. Train a deep neural network that generates a vector representation of the Item features (e.g. word2vec).
+2. Compute Item features using trained network.
+3. Compute Item similarities using these features.
+4. Use kNN classifier / regression to predict missing preference scores based on active User's observed preference scores
+
+Step 4 could instead involve computation of **clusters** and recommending same-cluster Items with high preference scores as an alternative to nearest neighbor lookups.
+
+### Cold start problem
+
+If we don't observe any User features, a common approach is to independently fit a separate model for each User.  But it's hard to build predictors for **new Users** who don't have enough observed preferences yet.  This is one form of the **cold start** problem.  The [Wikipedia page on this issue](https://en.wikipedia.org/wiki/Cold_start) suggests explicitly asking Users questions to elicit preferences.  For example, we could require new Users to rate $K$ movies upon signing up.
+
+In a more statistical flavor, you could use fit a global model that estimates User-specific **fixed effects** with shared Item-specific effects, but that approach could suffer from the Neyman-Scott problem (number of parameters increases as data increases, so never achieve asymptotic properties of estimators).  
+
+A possibly better approach (which I haven't seen much of in the literature for content-based systems) could be using **hierarchical models** (e.g. random / mixed effects, Bayesian approaches) to share information across Users.  Though, this probably counts as a hybrid approach with User-based collaboration.
+
+### Over-specialization
+
+Content-based systems can suffer from **over-specialization** because they have no inherent mechanism for discovery.  For example, a User who only listens to rock music will likely never be recommended any techno songs.  This makes sense intuitively if we recall that predictive models can interpolate within the observed range of input features, but they don't extrapolate well beyond this.  
+
+This [book chapter by Lops et. al. (2011) discusses over-specialization](http://facweb.cs.depaul.edu/mobasher/classes/ect584/Papers/ContentBasedRS.pdf).
+
+Like in reinforcement learning, we can handle this by allowing an Exploration vs Exploitation tradeoff.  For example, we can allow a random recommendation with probability $\epsilon$, and select the Item with maximal $\widehat{y}_{ui}$ with probability $1 - \epsilon$.
+
+
+## Collaborative filtering systems
+
+This [survey paper by Breese et. al. (1998)](https://arxiv.org/pdf/1301.7363.pdf) categorizes collaborative filtering techniques into "memory"  and "model"-based methods.  I personally don't like this distinction because the "memory" (aka "neighborhood") methods are simply nearest neighbor predictors, and model-based methods are a catch-all term for anything else.
+
+At its heart, the collaborative filtering problem isn't that different from the content-based filtering problem.  **The key distinction is that collaborative filtering constructs User or Item features from the preference score vectors** as opposed to using User or Item features defined by the researcher building the system.
+
+Beyond that, the prediction problem is the same:  Learn $f$ that accurately predicts the preference score $y_{ui}$.
+
+Given this characterization of collaborative filtering, I do like the distinction between **User-based** and **Item-based** methods.
+
+### Similar to content-based systems
+
+User-based collaborative filtering is similar to a demographic-based system with User features but no Item features.  The key distinction is the features for User $u$ are represented by **the vector of observed preference scores in row $u$ of the User-Item matrix**.  
+
+Similarly, Item-based collaborative filtering involves the same learning task as a content-based system with Item features but no User features.  The key distinction is the features for Item $i$ are represented by **the vector of observed preference scores in column $i$ of the User-Item matrix**.   
+
+### Different from content-based systems
+
+Suppose there are $5$ available Items.  Anne's observed preferences are $[?, y_{a2}, ?, y_{a4}, y_{a5}]$ and Bob's observed preferences are $[y_{b1}, y_{b2}, ?, ?, y_{b5}]$.  Then the **common support** of these two Users is the set of Items $2$ and $5$, indicating the two Items for which both Anne and Bob have observed preferences.
+
+We can also talk about the common support of two Items, which is the set of Users for which both Items have observed preferences.
+
+Why is this relevant?  Because **we can only compute distances between two vectors for the common support entries**.  
+
+Thus, **the key distinction between content-based systems and collaborative filtering is that content-based systems don't need to worry about common support when computing distances between feature vectors**.
+
+On the other hand, collaborative filtering predictions can be inaccurate simply because small common supports between vectors results in poorly computed distances.  This is also a form of the **cold start problem** and the reason why people say collaborative filtering requires large training sets.
+
+### Prefer Item-based over User-based collaboration
+
+Typically, **we only observe preferences for a small percentage of Items for each User**.  For example, Amazon has hundreds of millions of products, but most people have only ever purchased (and rated) a handful of them.  Hence, pairs of Users tend to have little common support, making it difficult to compute similarities between them.
+
+In contrast, the number of Items typically grows slower than the number of Users.  This means:
+
+- Item-based collaboration could require fewer similarity computations
+- Pairs of Items are more likely to have larger common support than pairs of Users
+
+[Sarwar et. al. (2001)](http://www.ra.ethz.ch/cdstore/www10/papers/pdf/p519.pdf) explain the pros of Item-based collaboration over User-based collaboration.  
+Also see [Amazon's paper](http://www.cs.umd.edu/~samir/498/Amazon-Recommendations.pdf) on their motivations for using Item-based collaboration.
+
+
+### Dimensionality reduction
+
+In the collaborative filtering literature, **latent factor models** refer to a class of techniques that map the collaborative preference score vectors to higher-order features.  Since the number of dimensions of the preference score vectors is generally large, this can be seen as a form of **dimensionality reduction**.  
+
+DON'T DEPEND ON DISTANCE FUNCTION, SO MAYBE THAT'S DISTINCTION between neighborhood/memory vs latent factor/model based CF?
+
+https://datajobs.com/data-science-repo/Recommender-Systems-%5BNetflix%5D.pdf
+http://www.cs.columbia.edu/~blei/papers/WangBlei2011.pdf
+
+
+
+
+## Similarity to Q-learning
+
+The User-Item matrix mentioned above is used in a similar manner as the reward matrix we're estimating in Q-learning problems where rows and columns correspond to States and Actions:  Given a State / User, we "recommend" the Action / Item that has highest predicted Reward / Preference.
+
+Some differences:
+
+- In Q-learning, the number of States and Actions are assumed fixed; whereas for recommender systems, we need to consider what happens when the number of Users and Items to grows over time.
+
+- In Q-learning, all Reward entries begin as missing and require estimation; whereas for recommender systems, we require at least some proportion of entries to be observed.
+
+- In Q-learning, the goal is to converge to stable estimates in the Reward entries; in other words, there is a gradual diminishing of exploration in favor of exploitation as we gain confidence in our estimates.  But for recommender systems, even if we fully-determine all User-Item preferences, it's possible that we still want to maintain a certain amount of exploration so recommendations don't become stale (e.g. using recommender system to guide preference changes).
+
+## Behavior depends on application domain
+
+We may require our recommender systems to behave differently depending on the domain of application:
+
+- For product recommendations on Amazon, we may care about recommending Items that go well together (e.g. peanut butter and jelly).
+
+- For entertainment recommendations on Netflix, Spotify or Yelp, we may care about recommending Items that the User wouldn't otherwise autonomously discover so that the User doesn't find recommendations stale (e.g. try new movie or music genres or eat at new restaurants).
+
+- For major purchases like houses or cars, we don't expect the User to be repeatedly using the recommender once they've purchased an Item, so the emphasis is more on quickly eliciting "true" preferences rather than exploration.
