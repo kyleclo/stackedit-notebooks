@@ -1,0 +1,319 @@
+---
+layout: post
+title: 'Expectation maximization'
+---
+
+The EM algorithm is one of those techniques I'll keep forgetting if I haven't used it in a while.  Here are some notes that I've compiled for reminding myself how/why it works when I (inevitably) forget again.  
+
+- [The latent variable model problem](#the-latent-variable-model-problem)
+	- [Ideal scenario](#ideal-scenario)
+	- [Actual scenario](#actual-scenario)
+	- [The EM algorithm](#the-em-algorithm)
+- [Example with Gaussian mixture model](#example-with-gaussian-mixture-model)
+	- [Reparameterization with latent variables](#reparameterization-with-latent-variables)
+	- [Complete likelihood maximization for Gaussian mixture models](#complete-likelihood-maximization-for-gaussian-mixture-models)
+	- [EM for Gaussian mixture models](#em-for-gaussian-mixture-models)
+	- [Initialization](#initialization)
+- [EM as coordinate ascent on lower bound](#em-as-coordinate-ascent-on-lower-bound)
+- [Tightening lower bound by shrinking KL divergence](#tightening-lower-bound-by-shrinking-kl-divergence)
+- [Appendix](#appendix)
+	- [Deriving closed-form solutions for mixture of Gaussians](#deriving-closed-form-solutions-for-mixture-of-gaussians)
+
+To keep things concise, I'll be using "likelihood" to refer to "log-likelihood".  
+
+## The latent variable model problem
+
+Suppose we have a latent variable model with distribution function $f(x) = \sum_{j=1}^k f(x, z)$.  
+
+where $x$ is an observed variable and $z$ is an unobserved/latent variable.  Our goal is to compute the **MLE** of respect to parameter $\theta$.
+
+Typically, the latent variable is discrete with $z \in \{1,\dots,k\}$, but we can also write the model for continuous latent variables by replacing the summation over $z$ with an integral.
+
+#### Ideal scenario
+
+Ideally, if we observed $z$, we could maximize the **complete likelihood** 
+
+$$l_C(\theta) = \sum_{i=1}^n \log f(x_i, z_i)$$
+
+We often assume the joint distribution $f(x,y)$ is an exponential family that can be factorized into:
+
+$$f(x,z) = f(z) f(x \vert z)$$
+
+which makes likelihood maximization really easy because $\log$ turns the product into a sum.
+
+#### Actual scenario
+
+But since we don't observe $z$, we're left with maximizing the **incomplete likelihood**:
+
+$$l_I(\theta) = \sum_{i=1}^n \log f(x_i) = \sum_{i=1}^n \log \sum_{z_i = j}^k f(x_i, z_i)$$
+
+ which is a more difficult problem often because $f(x)$ is no longer an exponential family after marginalization.
+
+#### The EM algorithm
+
+First, initialize parameters $\widehat{\theta}$.  
+
+Then iterate until convergence:
+
+- **E-step**
+	- For each $i=\{1,\dots,n\}$ and $j=\{1,\dots,k\}$, compute **posterior** probabilities $f(z_i = j\vert x_i)$ using the current parameter estimates $\widehat{\theta}$.  
+
+- **M-step**:
+	- Update $\widehat{\theta} \gets \arg \max_{\theta} Q(\theta)$ where $Q(\theta)$ is the **expected complete likelihood** (under the computed posterior distribution):
+
+$$Q(\theta) = \sum_{i=1}^n  E_{z_i \vert x_i} \left[ \log f(x_i, z_i) \right] = \sum_{i=1}^n \sum_{j=1}^k \underbrace{ f(z_i = j \vert x_i) }_{\text{const. from E-step}} \log \underbrace{ f(x_i, z_i) }_{\text{depends on } \theta} $$
+
+The EM algorithm can be adapted for **MAP** estimation by adding a prior term to $Q(\theta)$:
+
+$$\begin{align}
+\tilde{Q}(\theta) &= \sum_{i=1}^n E_{z_i \vert x_i}[\log f(\theta \vert x_i, z_i)] \\
+&= \sum_{i=1}^n \sum_{j=1}^k f(z_i = j \vert x_i) \left[ \log f(\theta) + \log f(x_i, z_i \vert \theta) \right] \\
+&= \log f(\theta) \sum_{i=1}^n \underbrace{ \sum_{j=1}^k f(z_i = j \vert x_i) }_{=1}  + \underbrace{ \sum_{i=1}^n \sum_{j=1}^k  f(z_i = j \vert x_i) \log f(x_i, z_i \vert \theta) }_{Q(\theta)} \\
+&= n \log f(\theta) + Q(\theta)
+\end{align}$$
+
+
+#### Summary
+
+- Maximizing $l_C(\theta)$ is easy, but we don't have it.  
+- We have $l_I(\theta)$, but maximization is hard.  
+- So instead, we maximize some other function $Q(\theta)$ which is similar in form to $l_C(\theta)$.
+
+## Example with Gaussian mixture model
+
+A Gaussian mixture model has density function:
+
+$$f(x) = \sum_{j=1}^k w_j \mathcal{N}(x; \mu_j, \Sigma_j)$$
+
+where $\sum_{j=1}^k w_j = 1$.  Its incomplete log-likelihood function is:
+
+$$l_I(w_{1:k}, \mu_{1:k}, \Sigma_{1:k}) = \sum_{i=1}^n \log \sum_{j=1}^k w_j \mathcal{N}(x_i; \mu_j, \Sigma_j)$$
+
+#### Reparameterization with latent variables
+
+An equivalent but more intuitive representation explicitly involves discrete latent variables $z$ that label the **mixture component** from which $x$ is drawn:
+
+$$z \sim \mathcal{Cat}(z; w_1, \dots, w_k)$$
+
+$$x \vert z = j \sim \mathcal{N}(x; \mu_j, \Sigma_j)$$
+
+We see that the parameter weights $w_j$ are equivalent to probabilities $f(z = j)$ of a categorical distribution.
+
+We see that this formulation is equivalent to the distribution function provided earlier:
+
+$$\begin{align}
+f(x) &= \sum_{j=1}^k f(z) f(x \vert z) \\
+&= \sum_{j=1}^k \prod_{j=1}^k w_j^{\mathbf{1}_{z = j}}  \prod_{j=1}^k \mathcal{N}(x; \mu_j, \Sigma_j)^{\mathbf{1}_{z = j}} \\
+&= \sum_{j=1}^k \prod_{j=1}^k \left[ w_j \mathcal{N}(x; \mu_j, \Sigma_j) \right]^{\mathbf{1}_{z = j}}  \\
+&= \sum_{j=1}^k w_j \mathcal{N}(x; \mu_j, \Sigma_j)
+\end{align}$$
+
+but now we have access to **indicator functions** $\mathbf{1}_{z=j}$ that will come in handy when working with the joint density.
+
+#### Complete likelihood maximization for Gaussian mixture models
+
+Suppose we did observe $z$ so we can work with the complete likelihood:
+
+$$\begin{align}
+l_C(w_{1:k}, \mu_{1:k}, \Sigma_{1:k}) &= \sum_{i=1}^n \log f(z_i) f(x_i \vert z_i) \\
+&= \sum_{i=1}^n \log \prod_{j=1}^k \left[ w_j \mathcal{N}(x_i; \mu_j, \Sigma_j) \right]^{\mathbf{1}_{z_i = j}} \\
+&= \sum_{i=1}^n  \sum_{j=1}^k \mathbf{1}_{z_i = j} \left[ \log w_j + \log \mathcal{N}(x_i; \mu_j, \Sigma_j) \right]
+\end{align}$$
+
+The MLEs can be derived analytically as:
+
+$$\widehat{\mu}_j = \frac{\sum_{i=1}^n \mathbf{1}_{z_i=j} x_i}{\sum_{i=1}^n \mathbf{1}_{z_i=j}}$$
+
+$$\widehat{\Sigma}_j = \frac{\sum_{i=1}^n \mathbf{1}_{z_i=j} (x_i - \mu_j) (x_i - \mu_j)^T}{\sum_{i=1}^n \mathbf{1}_{z_i=j}}$$
+
+$$\widehat{w}_j = \frac{1}{n}\sum_{i=1}^n \mathbf{1}_{z_i=j}$$
+
+which make sense intuitively --- the estimates are the MLEs you'd compute for each subset of $x$'s with common label $z$.
+
+#### EM for Gaussian mixture models
+
+**E-step**:  We need to compute the posterior probabilities $f(z_i = j \vert x_i)$ using the current estimates $\widehat{\mu}_j$, $\widehat{\Sigma}_j$, and $\widehat{w}_j$.  We can do this using Bayes Theorem:
+
+$$\begin{align}
+f(z_i = j \vert x_i) &= \frac{f(z_i = j) f(x_i \vert z_i = j)}{\sum_{j=1}^k f(z_i = j) f(x_i \vert z_i = j)} \\
+&= \frac{\widehat{w}_j \mathcal{N}(x_i; \widehat{\mu}_j, \widehat{\Sigma}_j)}{\sum_{j=1}^k \widehat{w}_j \mathcal{N}(x_i; \widehat{\mu}_j, \widehat{\Sigma}_j)}
+\end{align}$$
+
+The function we're trying to maximize is
+
+$$\begin{align}
+Q(\theta) &= \sum_{i=1}^n \sum_{j=1}^k f(z_i = j \vert x_i)  \log f(x_i, z_i) \\
+&= \sum_{i=1}^n \sum_{j=1}^k f(z_i = j \vert x_i) \log \prod_{j=1}^k \left[ w_j \mathcal{N}(x_i; \mu_j, \Sigma_j) \right]^{\mathbf{1}_{z_i = j}}  \\
+&= \sum_{i=1}^n \sum_{j=1}^k f(z_i = j \vert x_i) \sum_{j=1}^k \mathbf{1}_{z_i = j} \left[ \log w_j + \log \mathcal{N}(x_i; \mu_j, \Sigma_j) \right]  \\
+&= \sum_{i=1}^n \sum_{j=1}^k f(z_i = j \vert x_i)  \left[ \log w_j + \log \mathcal{N}(x_i; \mu_k, \Sigma_j) \right]
+\end{align}$$
+
+which looks exactly like the complete likelihood except with posterior probabilities instead of indicators!
+
+**M-step**:  We maximize $Q(\theta)$ using the computed values of $f(z_i = j \vert x_i)$.  The closed form solutions are:
+
+$$ \widehat{\mu}_j = \frac{\sum_{i=1}^n f(z_i = j \vert x_i) x_i}{\sum_{i=1}^n f(z_i = j  \vert x_i)}$$
+
+$$\widehat{\Sigma}_j = \frac{\sum_{i=1}^n f(z_i = j \vert x_i) (x_i - \mu_j) (x_i - \mu_j)^T}{\sum_{i=1}^n f(z_i = j \vert x_i)}$$
+
+$$\widehat{w}_j = \frac{1}{n} \sum_{i=1}^n f(z_i = j \vert x_i)$$
+
+See the [Appendix](#deriving-closed-form-solutions-for-mixture-of-gaussians) for step-by-step derivation.
+
+#### Initialization
+
+A possible initialization scheme involves running K-means until convergence and setting:
+
+- $\widehat{\mu}_j$ equal to the sample mean of the $j^{th}$ cluster
+- $\widehat{\Sigma}_j$ equal to the sample covariance of the $j^{th}$ cluster
+- $\widehat{w}_j$ equal to the sample proportion of observations in the $j^{th}$ cluster
+
+which are basically the complete likelihood MLEs taking the K-means cluster labels as known.
+
+## EM as coordinate ascent on lower bound
+
+Now to motivate why $Q(\theta)$ is a good substitute for the incomplete likelihood.  
+
+$$\begin{align}
+l_I(\theta) &= \sum_{i=1}^n \log \sum_{j=1}^k f(x_i, z_i) \\
+&= \sum_{i=1}^n \log \sum_{j=1}^k f(x_i, z_i) \frac{q(z_i)}{q(z_i)} \\
+&= \sum_{i=1}^n \log E_{q} \left[ \frac{f(x_i, z_i)}{q(z_i)} \right]  \\
+&\ge \sum_{i=1}^n E_q \left[ \log \frac{f(x_i, z_i)}{q(z_i)} \right] = \mathcal{L}(\theta, q)
+\end{align}$$
+
+where the inequality holds by **Jensen's inequality** since $\log$ is a concave function.  We refer to $\mathcal{L}(\theta, q)$ as the **lower bound** of the incomplete likelihood, where $q$ is some probability distribution on latent variable $z$.
+
+We can maximize $\mathcal{L}(\theta, q)$ via **coordinate ascent**:
+
+- Maximize with respect to $q$ while holding $\theta$ fixed
+- Maximize with respect to $\theta$ while holding $q$ fixed
+
+Furthermore, let's expand the lower bound:
+
+$$\mathcal{L}(\theta, q) = \sum_{i=1}^n E_q \left[ \log f(x_i, z_i)\right] - \sum_{i=1}^n E_q \left[ \log q(z_i) \right]$$
+
+Notice two key things:
+
+- It turns out that choosing $q(z)$ to be equal to the posterior $f(z = j \vert x)$ actually maximizes the entire lower bound.  In fact, if we make that substitution, then the left term becomes the EM objective function $Q(\theta)$.  This is why the E-step is presented as computing $f(z_i = j \vert x_i)$ terms that are treated as fixed in the M-step.
+
+- The right term is constant with respect to $\theta$, so it can be ignored when maximizing $\theta$.  This is why the M-step is presented as maximizing just $Q(\theta)$ since doing so is equivalent to performing the coordinate ascent update for the entire lower bound with respect to $\theta$ while holding $q$ fixed.
+
+**In short, the EM algorithm is simply coordinate ascent on the lower bound of the incomplete likelihood**.  
+
+## Tightening lower bound by shrinking KL divergence
+
+There are still two unaddressed concerns:
+
+1. Show that the posterior $f(z = j \vert x)$ maximizes lower bound with respect to $q$ when holding $\theta$ constant.
+2. Why does maximizing the lower bound even work?  Just because a function bounds another doesn't mean their optima are aligned.
+
+#### Addressing concern (1)
+
+First, let's take the lower bound and expand:
+
+$$\begin{align}
+\mathcal{L}(\theta, q) &= \sum_{i=1}^n E_q \left[ \log \frac{f(x_i, z_i)}{q(z_i)} \right]  \\
+&= \sum_{i=1}^n \sum_{j=1}^k q(z_i = j) \log \frac{f(z_i = j \vert x_i) f(x_i)}{q(z_i = j)} \\
+&= \sum_{i=1}^n \sum_{j=1}^k \left[ q(z_i = j) \log \frac{f(z_i = j \vert x_i)}{q(z_i = j)} + q(z_i = j) \log f(x_i)  \right] \\
+&=\underbrace{ \sum_{i=1}^n  \sum_{j=1}^k q(z_i = j) \log \frac{f(z_i = j \vert x_i)}{q(z_i = j)} }_{-KL(q \Vert f(z \vert x))} + \underbrace{ \sum_{i=1}^n \log f(x_i) }_{l_I(\theta)} \underbrace{ \sum_{j=1}^k q(z_i = j) }_{=1}  \\
+\end{align}$$
+
+Recall that KL divergence is a non-negative quantity.  Then to maximize the lower bound, we need to minimize the negative KL divergence term.  We can ignore the $l_I(\theta)$ term because it's not actually a function of $q$.  KL divergence is minimized when the two distributions are equal, so $\mathcal{L}(\theta, q)$ is minimized when $q(z) = f(z \vert x)$.  
+
+#### Addressing concern (2)
+
+Furthermore, rearranging:
+
+$$l_I(\theta) = \mathcal{L}(\theta, q) + \sum_{i=1}^n KL \left(q(z_i) \Vert f(z_i \vert x_i) \right)$$
+
+We see that the lower bound *equals* the incomplete likelihood when the KL divergence is $0$.  When equality holds, we say the **lower bound is tight**.  Therefore, given $q(z) = f(z \vert x)$, performing the coordinate ascent maximization step on the lower bound is the same as doing so on the incomplete likelihood.  
+
+In fact, another way to see this is to realize that a sufficient condition for equality to hold in  Jensen's inequality is when the random variable is a constant:
+
+$$E[g(c)] = g(E[c]) = g(c)$$
+
+or in our case:
+
+$$l_I(\theta) = \sum_{i=1}^n E_q \left[ \log \frac{f(x_i, z_i)}{q(z_i)} \right] = \sum_{i=1}^n \left[ \log E_q \frac{f(x_i, z_i)}{q(z_i)} \right] = \mathcal{L}(\theta, q)$$
+
+when $q(z) = f(z \vert x)$ because the ratio term simplifies to $f(x)$, which is a constant with respect to $E_q$.  
+
+In other words, not only is the posterior $f(z \vert x)$ the correct maximizer of the lower bound in each coordinate ascent iteration, we can also view the E-step as tightening the lower bound so that it aligns with the actual likelihood we're trying to maximize.
+
+## Appendix
+
+### Deriving closed-form solutions for mixture of Gaussians
+
+Let's examine objective functions of this general form:
+
+$$J(w_{1:k}, \mu_{1:k}, \Sigma_{1:k}) = \sum_{i=1}^n \sum_{j=1}^k \alpha_{ij} \left[ \log w_j + \log \mathcal{N}(x_i; \mu_k, \Sigma_j) \right]$$
+
+where $\alpha_{ij}$ are constants that satisfy $\sum_{j=1}^k \alpha_{ij} = 1$:
+
+- In the complete likelihood setting, $\alpha_{ij} = \mathbf{1}_{z_i = j}$.
+- When trying to maximize $Q(w_{1:k}, \mu_{1:k}, \Sigma_{1:k})$ in the M-step, $\alpha_{ij} = f(z_i = j \vert x_i)$.
+
+Let's simplify the Gaussian density function to:
+
+$$\mathcal{N}(x_i; \mu_j, \Sigma_j) = C \vert \Sigma_j \vert^{-1/2} \exp \left( -\frac{1}{2} r_{ij}^T \Sigma_j^{-1} r_{ij} \right)$$
+
+where $C = (2\pi)^{-d/2}$ and $r_{ij} = x_i - \mu_j$ terms.
+
+#### Solution for $\mu_j$
+
+$$\begin{align}
+\frac{\partial J}{\partial \mu_j} &= \sum_{i=1}^n  \alpha_{ij}  \left( \frac{\partial}{\partial \mu_j} \log C \vert \Sigma_j \vert^{-1/2} - \frac{1}{2}  \frac{\partial}{\partial \mu_j}  (x_i - \mu_j) ^T \Sigma_j^{-1} (x_i - \mu_j) \right) \\
+&= \frac{1}{2} \Sigma_j^{-1} \sum_{i=1}^n \alpha_{ij} (x_i - \mu_j) 
+\end{align}$$
+
+Setting equal to $0$ and solving:
+
+$$\sum_{i=1}^n \alpha_{ij} x_i = \mu_j \sum_{i=1}^n \alpha_{ij} \implies \widehat{\mu}_j = \frac{\sum_{i=1}^n \alpha_{ij} x_i}{\sum_{i=1}^n \alpha_{ij}} $$
+
+#### Solution for $\Sigma_j$
+
+$$\begin{align}
+\frac{\partial J}{\partial \Sigma_j} &= \sum_{i=1}^n  \alpha_{ij}  \left( \frac{\partial}{\partial \Sigma_j} \log C  -\frac{1}{2} \frac{\partial}{\partial \Sigma_j}  \log \vert \Sigma_j \vert - \frac{1}{2} \frac{\partial}{\partial \Sigma_j}   r_{ij}^T \Sigma_j^{-1} r_{ij} \right) \\
+&= \sum_{i=1}^n \alpha_{ij} \left( -\frac{1}{2}  \frac{1}{\vert \Sigma_j \vert} \vert \Sigma_j \vert \Sigma_j^{-1} + \frac{1}{2} \Sigma_j^{-1} r_{ij} r_{ij}^T \Sigma_j^{-1} \right) \\
+&= -\frac{1}{2} \Sigma_j^{-1} \sum_{i=1}^n \alpha_{ij} \left( 1 - r_{ij} r_{ij}^T \Sigma_j^{-1} \right)
+\end{align}$$
+
+where we get the second line using Eq. 49 and Eq. 61 from [the Matrix Cookbook](http://www2.imm.dtu.dk/pubdb/views/edoc_download.php/3274/pdf/imm3274.pdf):
+
+$$\frac{\partial}{\partial \Sigma_j} \vert \Sigma_j \vert = \vert \Sigma_j \vert \Sigma_j^{-1}$$
+
+$$\frac{\partial}{\partial \Sigma_j} r_{ij}^T \Sigma_j^{-1} r_{ij} = -\Sigma_j^{-1} r_{ij} r_{ij}^T \Sigma_j^{-1}$$
+
+Setting equal to $0$ and solving:
+
+$$\sum_{i=1}^n \alpha_{ij}  = \Sigma_j^{-1} \sum_{i=1}^n \alpha_{ij} r_{ij} r_{ij}^T    \implies \widehat{\Sigma}_j = \frac{\sum_{i=1}^n \alpha_{ij} r_{ij} r_{ij}^T}{\sum_{i=1}^n \alpha_{ij}}$$
+
+Note that in practice, we use $\widehat{r}_{ij} = x_i - \widehat{\mu}_j$ since actual $\mu_j$'s are unknown.  
+
+#### Solution for $w_j$
+
+Setting up the Lagrange multiplier:
+
+$$L = \sum_{i=1}^n \sum_{j=1}^k \alpha_{ij} \left[ \log w_j + \log \mathcal{N}(x_i; \mu_k, \Sigma_j) \right] - \lambda \left(\sum_{j=1}^k w_j - 1\right)$$
+
+Differentiating with respect to $w_j$ and $\lambda$:
+
+$$\begin{align}
+\frac{\partial L}{\partial w_j} &= \sum_{i=1}^n \frac{\alpha_{ij}}{w_j} - \lambda
+\end{align}$$
+
+$$\begin{align}
+\frac{\partial L}{\partial \lambda} &= - \left( \sum_{j=1}^k w_j - 1 \right) 
+\end{align}$$
+
+Setting the derivatives equal to $0$ and solving the first equation for $\lambda$:
+
+$$\begin{align}
+\sum_{i=1}^n \alpha_{ij} &= \lambda w_j \\
+\sum_{i=1}^n \underbrace{ \sum_{j=1}^k \alpha_{ij} }_{=1} &= \lambda \underbrace{ \sum_{j=1}^k w_j }_{=1} 
+\end{align}$$
+
+Plugging $\widehat{\lambda} = n$ back into the equation:
+
+$$\widehat{w}_j = \frac{1}{n} \sum_{i=1}^n \alpha_{ij}$$
+
