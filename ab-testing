@@ -1,0 +1,97 @@
+
+# Problem
+
+Let $x$ be an indicator denoting membership in class A or B.  
+Let $y$ be a binary response denoting success or failure.
+
+Then $y$ is a Bernoulli random variable with probability of success $p_A$ or $p_B$ depending on class membership.
+
+The goal is to use our collected (independent) sample $(x_1,y_1),\dots,(x_n,y_n)$ to determine which of $p_A$ and $p_B$ is larger.
+
+<hr>
+
+# Normal Approximation (Z test)
+
+### Mean and variance of the sample proportion
+We can estimate $p_A$ using the **sample proportion** of successes among the trials in class $A$:
+
+$$\widehat{p}_A = \frac{1}{n_A}\sum_{i \in A}y_i$$
+
+Assuming $n_A$ is fixed, then $n_A \widehat{p}_A$ has a Binomial$(n_A, p_A)$ sampling distribution because it is a sum of independent Bernoulli variables.
+
+$$E[n_A \widehat{p}_A] = n_A p_A \implies E[\widehat{p}_A] = p_A$$
+
+$$Var[n_A \widehat{p}_A] = n_A p_A (1- p_A) \implies Var[\widehat{p}_A] = \frac{p_A(1-p_A)}{n_A}$$
+
+We can compute the mean and variance of $\widehat{p}_B$ similarly.
+
+### Difference of proportions is asymptotically Gaussian
+
+We want to test whether $H_0: p_A = p_B$ or $H_1: p_A \neq p_B$ is the more believable claim.  The **difference in proportions**:
+
+$$d = \widehat{p}_A - \widehat{p}_B$$
+
+is useful in that:
+
+- $d \approx 0$ serves as evidence in support of $H_0$
+- $d \gt \gt 0$ or $d \lt \lt 0$ serves as evidence in support of $H_1$
+
+We refer to $d$ as our **test statistic**.  Its mean and variance can be derived using **linearity of expectation / variance**:
+
+$$\begin{align}E[d] &= E[\widehat{p}_A - \widehat{p}_B] \\ &= p_A - p_B\end{align}$$
+
+$$\begin{align}Var[d] &= Var[\widehat{p}_A - \widehat{p}_B] \\ &= \frac{p_A (1-p_A)}{n_A} + \frac{p_B (1 - p_B)}{n_B} + \underbrace{2 cov(\widehat{p}_A, \widehat{p}_B)}_{=0 \text{ by indep data}} \\ &= \frac{p_A (1-p_A)}{n_A} + \frac{p_B (1 - p_B)}{n_B}\end{align}$$
+
+Using the **central limit theorem**, a sample proportion is approximately Gaussian for sufficiently large sample sizes.  And since linear combinations of Gaussian variables are Gaussian, $d$ is approximately Gaussian for large sample sizes.
+
+Then under $H_0$: 
+
+$$\begin{align}E_0[d] &= 0\end{align}$$ 
+
+$$
+\begin{align}
+Var_0[d] &= p (1-p) \left(\frac{1}{n_A} + \frac{1}{n_B}\right) \\
+\end{align}
+$$
+
+where $p = p_A = p_B$.
+
+### Computing the p-value
+
+Let $d^*$ denote our **observed** value of $d$.  Then the **p-value** is the probability (assuming $H_0$ is true) of observing a value of $d$ that is at least as extreme as $d^*$ if we were to repeat our experiment with the same $n_A$ and $n_B$.
+
+Specifically, the p-value is computed:
+
+$$2 \cdot Pr_0(\vert d \vert \ge \vert d^* \vert)$$
+
+where $Pr_0$ denotes probability under the Gaussian model with mean $E_0[d]$ and variance $Var_0[d]$.
+
+But $Var_0[d]$ is incalculable because $p$ is unknown. The simple solution is to use the plug-in estimator $\widehat{p}$ to substitute for $p$ and get:
+
+$$\widehat{Var}_0[d] = \widehat{p}(1-\widehat{p}) \left(\frac{1}{n_A} + \frac{1}{n_B}\right)$$
+
+where
+
+$$\begin{align}\widehat{p} &= \frac{1}{n_A + n_B} \sum_{i=1}^{n_A + n_B} y_i \\ &=\frac{n_A \widehat{p}_A + n_B \widehat{p}_B}{n_A + n_B}\end{align}$$
+
+
+### Using a Z-score
+
+We'll often see the test statistic presented as a **Z-score**:
+
+$$\begin{align}
+Z &= \frac{d - E[d]}{Var[d]} \\ &= \frac{\left( \widehat{p}_A - \widehat{p}_B\right) - (p_A - p_B)}{\frac{p_A (1-p_A)}{n_A} + \frac{p_B (1 - p_B)}{n_B}}
+\end{align}$$
+
+Under $H_0$:
+
+$$Z = \frac{\left( \widehat{p}_A - \widehat{p}_B\right) - 0}{\widehat{p} (1-\widehat{p})\left(\frac{1}{n_A} + \frac{1}{n_B}\right)}$$
+
+is approximately Gaussian with mean 0 and variance 1.
+
+## Exact test
+
+
+
+# Nonparametric
+
