@@ -1,0 +1,160 @@
+---
+layout: post
+title: 'Short intro to hidden Markov models'
+---
+
+## Hidden Markov model
+
+### Specification
+Let there be a sequence of discrete variables $\{x_1,\dots,x_n\}$, where each $x_t$ represents the state at time $t$.  We assume the sequence is a Markov chain, so
+
+$$p(x_t \vert x_1,\dots,x_{t-1}) = p(x_t \vert x_{t-1})$$
+
+There are $k$ possible states, and $p(x_t = j \vert x_{t-1} = i)$ is the probability of transitioning from state $i$ at time $t-1$ to state $j$ at time $t$.
+
+Furthermore, we don't observe the states --- they're hidden.  Instead, we observe a sequence of output values $\{y_1,\dots,y_n\}$, where each $y_t$ is drawn from a conditional distribution $p(y_t \vert x_t)$ that depends on the current state $x_t$.  Note that $y_t$ can be discrete or continuous.
+
+![HMM](https://upload.wikimedia.org/wikipedia/commons/8/83/Hmm_temporal_bayesian_net.svg)
+
+*(Image taken from Wikipedia)*
+
+For simplicity, we'll assume transition probabilities $p(x_t \vert x_{t-1})$, emission distributions $p(y_t \vert x_t)$, and the number of states $k$ remain the same over time. 
+
+<!-- ### Example -->
+<!-- Let $x_t \in \{\text{Sick}, \text{Healthy}\}$, and let $y_t$ be counts of the number of sneezes on day $t$.  -->
+
+<!-- Suppose you recorded how many times you sneezed every day for a year (weirdo).  Can you tell which days you were sick from this data? -->
+
+
+## Forward-backward algorithm
+
+Suppose we know the probabilities for the initial state $p(x_1)$, all transition probabilities $p(x_t \vert x_{t-1})$ and all output distributions $p(y_t \vert x_t)$.  
+
+Then for each $t = 1,\dots,n$ and for each $j = 1,\dots, k$:
+
+- Use the forward algorithm to compute $\alpha_t(j) = p(x_t = j, y_{1:t})$.
+
+- Use the backward algorithm to compute $\beta_t(j) = p(y_{(t+1):n} \vert x_t = j)$.
+
+Once we have the forward and backward probabilities, there are two big uses:
+
+1. Compute marginal likelihood $p(y_{1:n})$.
+
+2. Using (1), compute posterior probabilities of hidden states $p(x_{1:n} \vert y_{1:n})$.
+
+See [Baum et. al. (1970)](https://projecteuclid.org/euclid.aoms/1177697196) for original paper.
+
+### Forward algorithm
+
+Initialize $t = 1$ case:
+
+$$\begin{align} \alpha_1 &= p(x_1, y_1) \\ 
+&= p(x_1) p(y_1 \vert x_1)
+\end{align}$$
+
+Then compute for each $t = 2,\dots,n$:
+$$ \begin{align} \alpha_t &= p(x_t,y_{1:t}) \\
+&= \sum_{x_{t-1} = 1}^k p(x_t, x_{t-1}, y_{1:t}) \\ 
+&= \sum_{x_{t-1} = 1}^k p(x_{t-1}, y_{1:(t-1)}) p(x_t, y_t \vert x_{t-1}, y_{1:(t-1)}) \\ 
+&= \sum_{x_{t-1} = 1}^k  p(x_{t-1}, y_{1:(t-1)}) p(x_t \vert x_{t-1}, y_{1:(t-1)}) p(y_t \vert x_t,x_{t-1}, y_{1:(t-1)}) \\
+&= \sum_{x_{t-1} = 1}^k p(x_t \vert x_{t-1})  \underbrace{ p(x_{t-1}, y_{1:(t-1)}) }_{\alpha_{t-1}} p(y_t \vert x_t) \\ 
+\end{align}$$
+
+Repeat this for all values of $x_t = 1,\dots, k$.
+
+### Backward algorithm
+
+Initialize $t = n$ case:
+
+$$\begin{align}
+\beta_n &= p(y_{n+1} \vert x_n) = 1
+\end{align}$$
+
+Note that the notation is simply a formality since there is no observed $y_{n+1}$.
+
+Then compute for each $t = n-1,\dots,1$:
+$$\begin{align} \beta_t &= p(y_{(t+1):n} \vert x_t) \\
+&= \sum_{x_{t+1} = 1}^k p(y_{(t+1):n},x_{t+1} \vert x_t) \\
+&= \sum_{x_{t+1} = 1}^k p(y_{t+1}, x_{t+1} \vert x_t) p(y_{(t+2):n} \vert y_{t+1}, x_t, x_{t+1}) \\
+&= \sum_{x_{t+1} = 1}^k p(x_{t+1} \vert x_t) p(y_{t+1} \vert x_t, x_{t+1}) p(y_{(t+2):n} \vert y_{t+1}, x_t, x_{t+1}) \\ 
+&= \sum_{x_{t+1} = 1}^k  p(x_{t+1} \vert x_t) p(y_{t+1} \vert x_{t+1}) \underbrace{ p(y_{(t+2):n} \vert x_{t+1}) }_{\beta_{t+1}} 
+\end{align}$$
+
+Repeat this for all values of $x_t = 1, \dots, k$.
+
+## Computing the marginal likelihood
+
+The marginal likelihood is easy to calculate because hidden states are discrete and finite:
+
+$$p(y_{1:n}) = \sum_{j=1}^k p(x_n = j, y_{1:n}) = \sum_{j=1}^k \alpha_n(j)$$
+
+This takes $\mathcal{O}(nm^2)$ operations, which is way more efficient than the $\mathcal{O}(nm^n)$ brute-force method:
+
+$$\begin{align} p(y_{1:n}) &= \sum_{x_{1:n} } p(x_{1:n}) p(y_{1:n} \vert x_{1:n})  \\
+&= \sum_{x_{1:n} } p(x_1) p(y_1 \vert x_t) \prod_{t=2}^n p(x_t \vert x_{t-1})  p(y_t \vert x_t) \end{align}$$
+
+#### Gradient descent
+
+Given that we have an efficient way to compute the marginal likelihood, we can actually learn the parameters of an HMM:
+
+```
+while not_converged:
+	
+```
+
+## Computing the posterior of hidden state sequence
+
+#### Single hidden state
+
+We know the posterior of any single hidden state:
+
+$$\begin{align}
+p(x_t \vert y_{1:n}) &= \frac{p(x_t, y_{1:n})}{p(y_{1:n})} \\
+&= \frac{p(x_t, y_{1:t}) p(y_{(t+1):n} \vert x_t, y_{1:t})}{p(y_{1:n})} \\
+&= \frac{p(x_t, y_{1:t}) p(y_{(t+1):n} \vert x_t)}{p(y_{1:n})} \\
+&= \frac{\alpha_t \beta_t}{p(y_{1:n})}
+\end{align}$$
+
+#### Multiple hidden states
+
+Then the joint posterior of two successive hidden states:
+
+$$\begin{align}
+p(x_t, x_{t+1} \vert y_{1:n}) &= \frac{p(x_t, x_{t+1},  y_{1:n})}{p(y_{1:n})} \\
+&= \frac{p(x_t) p(x_{t+1} \vert x_t) p(y_{1:n} \vert x_t, x_{t+1})}{p(y_{1:n})} \\
+&= \frac{p(x_t) p(x_{t+1} \vert x_t) p(y_{1:t}\vert x_t, x_{t+1}) p(y_{(t+1):n} \vert x_t, x_{t+1}, y_{1:t})}{p(y_{1:n})} \\
+&= \frac{p(x_t) p(x_{t+1} \vert x_t) p(y_{1:t} \vert x_t) p(y_{(t+1):n} \vert x_{t+1})}{p(y_{1:n})} \\
+&= \frac{p(x_t) p(x_{t+1} \vert x_t)  p(y_{1:t} \vert x_t ) p(y_{t+1} \vert x_{t+1}) p(y_{(t+2):n} \vert x_{t+1})}{p(y_{1:n})} \\
+&= \frac{\alpha_t p(x_{t+1} \vert x_t) p(y_{t+1} \vert x_{t+1}) \beta_{t+1} }{p(y_{1:n})} \\
+\end{align}$$
+
+In fact, a similar derivation gives the joint posterior for a sequence of hidden states:
+
+$$p(x_{t:(t+k)} \vert y_{1:n}) = \frac{\alpha_t \prod_{j=1}^k p(x_{t+j} \vert x_{t+j-1}) p(y_{t+j} \vert x_{t+j}) \beta_{t+k}}{p(y_{1:n})}$$
+
+We can verify that this works for the full sequence (i.e. $t = 1$ and $k = n-1$):
+
+$$\begin{align}
+p(x_{1:n} \vert y_{1:n}) &= \frac{\alpha_1 \prod_{t=2}^n p(x_t \vert x_{t-1}) p(y_t \vert x_t) \beta_n }{p(y_{1:n})} \\
+&= \frac{p(x_1) p(y_1 \vert x_1) \prod_{t=2}^n p(x_t \vert x_{t-1}) p(y_t \vert x_t)}{p(y_{1:n})} \\
+&= \frac{p(x_{1:n}, y_{1:n})}{p(y_{1:n})} \\
+\end{align}$$
+
+
+# Conclusion
+
+Now we have all the pieces to compute $p(x_t \vert y_1,\dots,y_n)$.  We can use this to find the most likely state at any time $t$.
+
+Of course, this isn't enough by itself:
+
+- The Viterbi algorithm finds the most likely sequence of hidden states (i.e. $\{x_1,\dots,x_n\}$ such that $p(x_1,\dots,x_n \vert y_1,\dots,y_n)$ is maximized ).
+
+- The Baum-Welch algorithm uses the forward-backward algorithm to compute maximum likelihood estimates of the HMM parameters (i.e. the probabilities/distributions that we took as "given").  
+
+
+# Postface
+
+Had to learn stuff about HMMs while working on changepoint problems, and I figured I might as well organize some notes for future reference.  Hopefully someone else also finds these derivations useful.
+
+Credit given to Jeffrey Miller's [mini-lectures](https://www.youtube.com/user/mathematicalmonk), which were really easy to digest for someone new to the material like myself.  
+
